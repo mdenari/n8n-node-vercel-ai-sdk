@@ -8,7 +8,8 @@ import {
 	type IDataObject,
 } from 'n8n-workflow';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { streamText } from 'ai';
+import { generateText } from 'ai';
+import type { GoogleGenerativeAIProviderMetadata } from '@ai-sdk/google';
 
 type Role = 'system' | 'user' | 'assistant';
 
@@ -16,6 +17,21 @@ interface ChatMessage {
 	role: Role;
 	content: string;
 }
+
+type SafetyCategory =
+	| 'HARM_CATEGORY_HATE_SPEECH'
+	| 'HARM_CATEGORY_DANGEROUS_CONTENT'
+	| 'HARM_CATEGORY_HARASSMENT'
+	| 'HARM_CATEGORY_SEXUALLY_EXPLICIT'
+	| 'HARM_CATEGORY_UNSPECIFIED'
+	| 'HARM_CATEGORY_CIVIC_INTEGRITY';
+
+type SafetyThreshold =
+	| 'BLOCK_LOW_AND_ABOVE'
+	| 'BLOCK_MEDIUM_AND_ABOVE'
+	| 'BLOCK_ONLY_HIGH'
+	| 'BLOCK_NONE'
+	| 'HARM_BLOCK_THRESHOLD_UNSPECIFIED';
 
 export class GoogleGenerativeAI implements INodeType {
 	description: INodeTypeDescription = {
@@ -177,13 +193,6 @@ export class GoogleGenerativeAI implements INodeType {
 						default: 0.7,
 						description: 'The sampling temperature to use',
 					},
-					{
-						displayName: 'Stream',
-						name: 'stream',
-						type: 'boolean',
-						default: false,
-						description: 'Whether to stream the response',
-					},
 				],
 			},
 			{
@@ -272,16 +281,13 @@ export class GoogleGenerativeAI implements INodeType {
 				const options = this.getNodeParameter('options', i, {}) as {
 					maxTokens?: number;
 					temperature?: number;
-					stream?: boolean;
 				};
 
 				const safetySettings = this.getNodeParameter('safetySettings.settings', i, []) as Array<{
-					category: string;
-					threshold: string;
+					category: SafetyCategory;
+					threshold: SafetyThreshold;
 				}>;
 				const useSearchGrounding = this.getNodeParameter('useSearchGrounding', i, false) as boolean;
-
-				let response: IDataObject = {};
 
 				const credentials = await this.getCredentials('googleGenerativeAIApi');
 				const googleProvider = createGoogleGenerativeAI({
@@ -292,32 +298,31 @@ export class GoogleGenerativeAI implements INodeType {
 					},
 				});
 
+				let response: IDataObject = {};
+
 				if (operation === 'complete') {
 					const prompt = this.getNodeParameter('prompt', i) as string;
 					const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
 
-					const result = await streamText({
-						model: googleProvider(model),
+					const result = await generateText({
+						model: googleProvider(model, {
+							safetySettings: safetySettings,
+							useSearchGrounding: useSearchGrounding,
+						}),
 						messages,
 						maxTokens: options.maxTokens,
 						temperature: options.temperature,
 					});
 
-					let text = '';
-					for await (const chunk of result.textStream) {
-						text += chunk;
-						if (!options.stream) {
-							continue;
-						}
-						returnData.push({
-							json: { text: chunk, complete: false },
-						});
-					}
+					response = { text: result.text };
 
-					if (!options.stream) {
-						response = { text };
-					} else {
-						response = { text, complete: true };
+					// Add metadata if using search grounding
+					if (useSearchGrounding) {
+						const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
+						if (metadata) {
+							response.groundingMetadata = metadata.groundingMetadata;
+							response.safetyRatings = metadata.safetyRatings;
+						}
 					}
 				} else if (operation === 'chat') {
 					const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
@@ -330,28 +335,25 @@ export class GoogleGenerativeAI implements INodeType {
 						content: msg.content,
 					}));
 
-					const result = await streamText({
-						model: googleProvider(model),
+					const result = await generateText({
+						model: googleProvider(model, {
+							safetySettings: safetySettings,
+							useSearchGrounding: useSearchGrounding,
+						}),
 						messages,
 						maxTokens: options.maxTokens,
 						temperature: options.temperature,
 					});
 
-					let text = '';
-					for await (const chunk of result.textStream) {
-						text += chunk;
-						if (!options.stream) {
-							continue;
-						}
-						returnData.push({
-							json: { text: chunk, complete: false },
-						});
-					}
+					response = { text: result.text };
 
-					if (!options.stream) {
-						response = { text };
-					} else {
-						response = { text, complete: true };
+					// Add metadata if using search grounding
+					if (useSearchGrounding) {
+						const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
+						if (metadata) {
+							response.groundingMetadata = metadata.groundingMetadata;
+							response.safetyRatings = metadata.safetyRatings;
+						}
 					}
 				}
 
