@@ -55,5 +55,10 @@
   },
   "peerDependencies": {
     "n8n-workflow": "*"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^1.1.0",
+    "@ai-sdk/openai": "^1.0.11",
+    "ai": "^4.0.22"
   }
 }
