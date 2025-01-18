@@ -33,7 +33,7 @@ export class GoogleGenerativeAI implements INodeType {
 		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
-				name: 'googleApi',
+				name: 'googleGenerativeAIApi',
 				required: true,
 			},
 		],
@@ -283,7 +283,7 @@ export class GoogleGenerativeAI implements INodeType {
 
 				let response: IDataObject = {};
 
-				const credentials = await this.getCredentials('googleApi');
+				const credentials = await this.getCredentials('googleGenerativeAIApi');
 				const googleProvider = createGoogleGenerativeAI({
 					apiKey: credentials.apiKey as string,
 					baseURL: 'https://generativelanguage.googleapis.com/v1beta',

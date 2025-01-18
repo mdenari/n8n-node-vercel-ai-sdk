@@ -5,10 +5,10 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-export class OpenAiApi implements ICredentialType {
-	name = 'openAiApi';
-	displayName = 'OpenAI API';
-	documentationUrl = 'https://platform.openai.com/docs/api-reference';
+export class GoogleGenerativeAICredentialsApi implements ICredentialType {
+	name = 'googleGenerativeAIApi';
+	displayName = 'Google Generative AI API';
+	documentationUrl = 'https://ai.google.dev/docs';
 	properties: INodeProperties[] = [
 		{
 			displayName: 'API Key',
@@ -17,7 +17,7 @@ export class OpenAiApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			required: true,
-			description: 'Your OpenAI API key',
+			description: 'Your Google API key for Gemini models',
 		},
 	];
 
@@ -25,15 +25,15 @@ export class OpenAiApi implements ICredentialType {
 		type: 'generic',
 		properties: {
 			headers: {
-				Authorization: '=Bearer {{$credentials.apiKey}}',
+				'x-goog-api-key': '={{$credentials.apiKey}}',
 			},
 		},
 	};
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: 'https://api.openai.com/v1',
-			url: '/models',
+			baseURL: 'https://generativelanguage.googleapis.com',
+			url: '/v1/models',
 			method: 'GET',
 		},
 	};

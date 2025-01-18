@@ -5,7 +5,7 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-export class AnthropicApi implements ICredentialType {
+export class AnthropicCredentialsApi implements ICredentialType {
 	name = 'anthropicApi';
 	displayName = 'Anthropic API';
 	documentationUrl = 'https://docs.anthropic.com/claude/reference';

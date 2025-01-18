@@ -33,7 +33,7 @@ export class OpenAI implements INodeType {
 		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
-				name: 'openAiApi',
+				name: 'openAIApi',
 				required: true,
 			},
 		],
@@ -201,7 +201,7 @@ export class OpenAI implements INodeType {
 
 				let response: IDataObject = {};
 
-				const credentials = await this.getCredentials('openAiApi');
+				const credentials = await this.getCredentials('openAIApi');
 				const openAiProvider = createOpenAI({
 					apiKey: credentials.apiKey as string,
 				});
