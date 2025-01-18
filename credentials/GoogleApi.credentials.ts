@@ -5,10 +5,10 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-export class VercelAiApi implements ICredentialType {
-	name = 'vercelAiApi';
-	displayName = 'Vercel AI API';
-	documentationUrl = 'https://sdk.vercel.ai/docs';
+export class GoogleApi implements ICredentialType {
+	name = 'googleApi';
+	displayName = 'Google API';
+	documentationUrl = 'https://ai.google.dev/docs';
 	properties: INodeProperties[] = [
 		{
 			displayName: 'API Key',
@@ -17,7 +17,7 @@ export class VercelAiApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			required: true,
-			description: 'Your Vercel AI API key',
+			description: 'Your Google API key for Gemini models',
 		},
 	];
 
@@ -25,14 +25,14 @@ export class VercelAiApi implements ICredentialType {
 		type: 'generic',
 		properties: {
 			headers: {
-				Authorization: '=Bearer {{$credentials.apiKey}}',
+				'x-goog-api-key': '={{$credentials.apiKey}}',
 			},
 		},
 	};
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: 'https://api.vercel.ai',
+			baseURL: 'https://generativelanguage.googleapis.com',
 			url: '/v1/models',
 			method: 'GET',
 		},

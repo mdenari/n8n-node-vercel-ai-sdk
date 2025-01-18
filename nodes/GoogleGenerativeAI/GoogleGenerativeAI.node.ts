@@ -7,8 +7,7 @@ import {
 	NodeOperationError,
 	type IDataObject,
 } from 'n8n-workflow';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { streamText } from 'ai';
 
 type Role = 'system' | 'user' | 'assistant';
@@ -18,38 +17,24 @@ interface ChatMessage {
 	content: string;
 }
 
-export class VercelAI implements INodeType {
+export class GoogleGenerativeAI implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'Vercel AI',
-		name: 'vercelAi',
-		icon: 'file:vercel.svg',
+		displayName: 'Google Generative AI',
+		name: 'googleGenerativeAi',
+		icon: 'file:google.svg',
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["model"]}}',
-		description: 'Use Vercel AI SDK',
+		description: 'Use Google Generative AI models via Vercel AI SDK',
 		defaults: {
-			name: 'Vercel AI',
+			name: 'Google Generative AI',
 		},
 		inputs: [NodeConnectionType.Main],
 		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
-				name: 'openAiApi',
-				required: false,
-				displayOptions: {
-					show: {
-						provider: ['openai'],
-					},
-				},
-			},
-			{
-				name: 'anthropicApi',
-				required: false,
-				displayOptions: {
-					show: {
-						provider: ['anthropic'],
-					},
-				},
+				name: 'googleApi',
+				required: true,
 			},
 		],
 		properties: [
@@ -75,69 +60,25 @@ export class VercelAI implements INodeType {
 				default: 'complete',
 			},
 			{
-				displayName: 'Provider',
-				name: 'provider',
-				type: 'options',
-				options: [
-					{
-						name: 'OpenAI',
-						value: 'openai',
-					},
-					{
-						name: 'Anthropic',
-						value: 'anthropic',
-					},
-				],
-				default: 'openai',
-				description: 'The AI provider to use',
-			},
-			{
 				displayName: 'Model',
 				name: 'model',
 				type: 'options',
-				displayOptions: {
-					show: {
-						provider: ['openai'],
-					},
-				},
 				options: [
 					{
-						name: 'GPT-4',
-						value: 'gpt-4',
+						name: 'Gemini 1.5 Pro',
+						value: 'gemini-1.5-pro-latest',
 					},
 					{
-						name: 'GPT-3.5 Turbo',
-						value: 'gpt-3.5-turbo',
+						name: 'Gemini 1.5 Pro Vision',
+						value: 'gemini-1.5-pro-vision-latest',
+					},
+					{
+						name: 'Gemini 1.5 Flash',
+						value: 'gemini-1.5-flash-latest',
 					},
 				],
-				default: 'gpt-3.5-turbo',
-				description: 'The OpenAI model to use',
-			},
-			{
-				displayName: 'Model',
-				name: 'model',
-				type: 'options',
-				displayOptions: {
-					show: {
-						provider: ['anthropic'],
-					},
-				},
-				options: [
-					{
-						name: 'Claude 3 Opus',
-						value: 'claude-3-opus-20240229',
-					},
-					{
-						name: 'Claude 3 Sonnet',
-						value: 'claude-3-sonnet-20240229',
-					},
-					{
-						name: 'Claude 3 Haiku',
-						value: 'claude-3-haiku-20240307',
-					},
-				],
-				default: 'claude-3-opus-20240229',
-				description: 'The Anthropic model to use',
+				default: 'gemini-1.5-pro-latest',
+				description: 'The Google Generative AI model to use',
 			},
 			{
 				displayName: 'Prompt',
@@ -245,6 +186,78 @@ export class VercelAI implements INodeType {
 					},
 				],
 			},
+			{
+				displayName: 'Safety Settings',
+				name: 'safetySettings',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				options: [
+					{
+						name: 'settings',
+						displayName: 'Setting',
+						values: [
+							{
+								displayName: 'Category',
+								name: 'category',
+								type: 'options',
+								options: [
+									{
+										name: 'Hate Speech',
+										value: 'HARM_CATEGORY_HATE_SPEECH',
+									},
+									{
+										name: 'Dangerous Content',
+										value: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+									},
+									{
+										name: 'Harassment',
+										value: 'HARM_CATEGORY_HARASSMENT',
+									},
+									{
+										name: 'Sexually Explicit',
+										value: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+									},
+								],
+								default: 'HARM_CATEGORY_HATE_SPEECH',
+							},
+							{
+								displayName: 'Threshold',
+								name: 'threshold',
+								type: 'options',
+								options: [
+									{
+										name: 'Block Low and Above',
+										value: 'BLOCK_LOW_AND_ABOVE',
+									},
+									{
+										name: 'Block Medium and Above',
+										value: 'BLOCK_MEDIUM_AND_ABOVE',
+									},
+									{
+										name: 'Block Only High',
+										value: 'BLOCK_ONLY_HIGH',
+									},
+									{
+										name: 'Block None',
+										value: 'BLOCK_NONE',
+									},
+								],
+								default: 'BLOCK_MEDIUM_AND_ABOVE',
+							},
+						],
+					},
+				],
+			},
+			{
+				displayName: 'Use Search Grounding',
+				name: 'useSearchGrounding',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to use search grounding for current information',
+			},
 		],
 	};
 
@@ -255,7 +268,6 @@ export class VercelAI implements INodeType {
 		for (let i = 0; i < items.length; i++) {
 			try {
 				const operation = this.getNodeParameter('operation', i) as string;
-				const provider = this.getNodeParameter('provider', i) as string;
 				const model = this.getNodeParameter('model', i) as string;
 				const options = this.getNodeParameter('options', i, {}) as {
 					maxTokens?: number;
@@ -263,30 +275,29 @@ export class VercelAI implements INodeType {
 					stream?: boolean;
 				};
 
+				const safetySettings = this.getNodeParameter('safetySettings.settings', i, []) as Array<{
+					category: string;
+					threshold: string;
+				}>;
+				const useSearchGrounding = this.getNodeParameter('useSearchGrounding', i, false) as boolean;
+
 				let response: IDataObject = {};
 
-				// Initialize the provider with credentials
-				let aiProvider;
-				if (provider === 'openai') {
-					const credentials = await this.getCredentials('openAiApi');
-					const openAiProvider = createOpenAI({
-						apiKey: credentials.apiKey as string,
-					});
-					aiProvider = openAiProvider;
-				} else {
-					const credentials = await this.getCredentials('anthropicApi');
-					const anthropicProvider = createAnthropic({
-						apiKey: credentials.apiKey as string,
-					});
-					aiProvider = anthropicProvider;
-				}
+				const credentials = await this.getCredentials('googleApi');
+				const googleProvider = createGoogleGenerativeAI({
+					apiKey: credentials.apiKey as string,
+					baseURL: 'https://generativelanguage.googleapis.com/v1beta',
+					headers: {
+						'x-goog-api-key': credentials.apiKey as string,
+					},
+				});
 
 				if (operation === 'complete') {
 					const prompt = this.getNodeParameter('prompt', i) as string;
 					const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
 
 					const result = await streamText({
-						model: aiProvider(model),
+						model: googleProvider(model),
 						messages,
 						maxTokens: options.maxTokens,
 						temperature: options.temperature,
@@ -320,7 +331,7 @@ export class VercelAI implements INodeType {
 					}));
 
 					const result = await streamText({
-						model: aiProvider(model),
+						model: googleProvider(model),
 						messages,
 						maxTokens: options.maxTokens,
 						temperature: options.temperature,
