@@ -313,6 +313,13 @@ export class GoogleGenerativeAI implements INodeType {
 						default: 0.7,
 						description: 'The sampling temperature to use',
 					},
+					{
+						displayName: 'Include Request Body',
+						name: 'includeRequestBody',
+						type: 'boolean',
+						default: false,
+						description: 'Whether to include the full request body in the response (can be very large with files)',
+					},
 				],
 			},
 			{
@@ -460,6 +467,7 @@ export class GoogleGenerativeAI implements INodeType {
 				const options = this.getNodeParameter('options', i, {}) as {
 					maxTokens?: number;
 					temperature?: number;
+					includeRequestBody?: boolean;
 				};
 
 				const safetySettings = this.getNodeParameter('safetySettings.settings', i, []) as Array<{
@@ -512,9 +520,11 @@ export class GoogleGenerativeAI implements INodeType {
 						},
 						
 						// Request/Response metadata
-						request: {
-							body: result.request?.body,
-						},
+						...(options.includeRequestBody && {
+							request: {
+								body: result.request?.body,
+							},
+						}),
 						response: {
 							id: result.response?.id,
 							modelId: result.response?.modelId,
@@ -638,9 +648,11 @@ export class GoogleGenerativeAI implements INodeType {
 						},
 						
 						// Request/Response metadata
-						request: {
-							body: result.request?.body,
-						},
+						...(options.includeRequestBody && {
+							request: {
+								body: result.request?.body,
+							},
+						}),
 						response: {
 							id: result.response?.id,
 							modelId: result.response?.modelId,
