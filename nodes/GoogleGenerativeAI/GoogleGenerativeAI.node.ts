@@ -26,9 +26,9 @@ import {
 import { z } from 'zod';
 import Ajv from 'ajv';
 
-/** 
+/**
  * Provider-specific union types for categories & thresholds:
- * Adjust if your AI SDK enumerations differ. 
+ * Adjust if your AI SDK enumerations differ.
  */
 type GoogleHarmCategory =
 	| 'HARM_CATEGORY_UNSPECIFIED'
@@ -45,16 +45,12 @@ type GoogleHarmThreshold =
 	| 'BLOCK_ONLY_HIGH'
 	| 'BLOCK_NONE';
 
-type AiSdkMessage =
-	| CoreSystemMessage
-	| CoreUserMessage
-	| CoreAssistantMessage
-	| CoreToolMessage;
+type AiSdkMessage = CoreSystemMessage | CoreUserMessage | CoreAssistantMessage | CoreToolMessage;
 
 /**
  * Helper function that builds either a single prompt/system or a messages array,
  * depending on the user's choice of "prompt" vs "messages".
- * 
+ *
  * We define it as a top-level function (not a class method) so we don't get:
  *  "Property 'buildInput' does not exist on type 'IExecuteFunctions'"
  */
@@ -112,11 +108,7 @@ async function buildInput(
 		} else {
 			// Build from fixedCollection
 			const items = exec.getInputData();
-			const messagesUi = exec.getNodeParameter(
-				'messages.messagesUi',
-				itemIndex,
-				[],
-			) as Array<{
+			const messagesUi = exec.getNodeParameter('messages.messagesUi', itemIndex, []) as Array<{
 				role: string;
 				systemContent?: string;
 				contentType?: 'text' | 'file';
@@ -183,15 +175,9 @@ async function buildInput(
 							);
 						}
 						const binaryData = itemBinary[binaryProperty];
-						const buffer = Buffer.from(
-							binaryData.data,
-							binaryData.data ? 'base64' : undefined,
-						);
+						const buffer = Buffer.from(binaryData.data, binaryData.data ? 'base64' : undefined);
 
-						if (
-							selectedMimeType === 'application/octet-stream' &&
-							binaryData.mimeType
-						) {
+						if (selectedMimeType === 'application/octet-stream' && binaryData.mimeType) {
 							selectedMimeType = binaryData.mimeType;
 						}
 
@@ -728,7 +714,8 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 				default: `{\n\t"type": "object",\n\t"properties": {\n\t\t"sentiment": {\n\t\t"type": "string",\n\t\t"enum": ["positive","negative","neutral"],\n\t\t"description": "The overall sentiment of the text"\n\t\t},\n\t\t"score": {\n\t\t"type": "number",\n\t\t"minimum": -1,\n\t\t"maximum": 1,\n\t\t"description": "Sentiment score from -1 (negative) to 1 (positive)"\n\t\t},\n\t\t"text": {\n\t\t"type": "string",\n\t\t"description": "The text content to analyze"\n\t\t}\n\t}\n}`,
 				required: true,
-				description: 'JSON schema describing the structure and constraints of the object to generate.',
+				description:
+					'JSON schema describing the structure and constraints of the object to generate.',
 				hint: 'For example, a schema describing sentiment analysis output.',
 				requiresDataPath: 'single',
 			},
@@ -906,7 +893,9 @@ export class GoogleGenerativeAI implements INodeType {
 		for (let i = 0; i < items.length; i++) {
 			try {
 				// Basic parameters
-				const operation = this.getNodeParameter('operation', i) as 'generateText' | 'generateObject';
+				const operation = this.getNodeParameter('operation', i) as
+					| 'generateText'
+					| 'generateObject';
 				const model = this.getNodeParameter('model', i) as string;
 				const options = this.getNodeParameter('options', i, {}) as {
 					maxTokens?: number;
@@ -942,7 +931,6 @@ export class GoogleGenerativeAI implements INodeType {
 					//  ~~~~~~~~~~~~~
 					//  Generate Text
 					//  ~~~~~~~~~~~~~
-
 
 					const result = await generateText({
 						model: googleProvider(model, {
@@ -1005,7 +993,6 @@ export class GoogleGenerativeAI implements INodeType {
 
 					// The output is in result.object
 					const formatted = formatObjectResult(result, options.includeRequestBody);
-
 
 					// // Optionally validate final object
 					// const validateFinal = ajv.compile(parsedSchema);

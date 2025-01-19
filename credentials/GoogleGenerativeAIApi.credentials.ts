@@ -37,4 +37,4 @@ export class GoogleGenerativeAIApi implements ICredentialType {
 			method: 'GET',
 		},
 	};
-} 
+}

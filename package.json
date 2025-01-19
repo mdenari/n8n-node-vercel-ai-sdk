@@ -6,10 +6,10 @@
     "n8n-community-node-package"
   ],
   "license": "MIT",
-  "homepage": "",
+  "homepage": "https://felixvemmer.com",
   "author": {
-    "name": "",
-    "email": ""
+    "name": "Felix Vemmer",
+    "email": "felix@vemmer.com"
   },
   "repository": {
     "type": "git",
