@@ -375,10 +375,6 @@ export class GoogleGenerativeAI implements INodeType {
 									'Select the MIME type of the file; choose Other to specify a custom MIME type',
 								options: [
 									{
-										name: 'Octet Stream (Default)',
-										value: 'application/octet-stream',
-									},
-									{
 										name: 'PDF (application/pdf)',
 										value: 'application/pdf',
 									},
@@ -395,11 +391,15 @@ export class GoogleGenerativeAI implements INodeType {
 										value: 'image/png',
 									},
 									{
-										name: 'JSON (application/json)',
-										value: 'application/json',
+										name: 'WebP Image (image/webp)',
+										value: 'image/webp',
 									},
 									{
-										name: 'MP3 Audio (audio/mpeg)',
+										name: 'MP3 Audio (audio/mp3)',
+										value: 'audio/mp3',
+									},
+									{
+										name: 'MPEG Audio (audio/mpeg)',
 										value: 'audio/mpeg',
 									},
 									{
@@ -407,8 +407,36 @@ export class GoogleGenerativeAI implements INodeType {
 										value: 'audio/wav',
 									},
 									{
+										name: 'AVI Video (video/avi)',
+										value: 'video/avi',
+									},
+									{
+										name: 'FLV Video (video/flv)',
+										value: 'video/flv',
+									},
+									{
+										name: 'MOV Video (video/mov)',
+										value: 'video/mov',
+									},
+									{
+										name: 'MPEG Video (video/mpeg)',
+										value: 'video/mpeg',
+									},
+									{
 										name: 'MP4 Video (video/mp4)',
 										value: 'video/mp4',
+									},
+									{
+										name: 'MPG Video (video/mpg)',
+										value: 'video/mpg',
+									},
+									{
+										name: 'MPEGPS Video (video/mpegps)',
+										value: 'video/mpegps',
+									},
+									{
+										name: 'WMV Video (video/wmv)',
+										value: 'video/wmv',
 									},
 									{
 										name: 'Other (Specify Below)',
@@ -419,6 +447,7 @@ export class GoogleGenerativeAI implements INodeType {
 									show: {
 										role: ['assistant', 'user'],
 										contentType: ['file'],
+										fileDataSource: ['url'],
 									},
 								},
 							},
