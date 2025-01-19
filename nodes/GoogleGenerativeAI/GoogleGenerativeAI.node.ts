@@ -16,12 +16,271 @@ import {
 	CoreTool,
 	CoreToolMessage,
 	CoreUserMessage,
+	generateObject,
+	GenerateObjectResult,
 	generateText,
 	GenerateTextResult,
+	jsonSchema,
 } from 'ai';
 
 import { z } from 'zod';
+import Ajv from 'ajv';
 
+/** 
+ * Provider-specific union types for categories & thresholds:
+ * Adjust if your AI SDK enumerations differ. 
+ */
+type GoogleHarmCategory =
+	| 'HARM_CATEGORY_UNSPECIFIED'
+	| 'HARM_CATEGORY_HATE_SPEECH'
+	| 'HARM_CATEGORY_DANGEROUS_CONTENT'
+	| 'HARM_CATEGORY_HARASSMENT'
+	| 'HARM_CATEGORY_SEXUALLY_EXPLICIT'
+	| 'HARM_CATEGORY_CIVIC_INTEGRITY';
+
+type GoogleHarmThreshold =
+	| 'HARM_BLOCK_THRESHOLD_UNSPECIFIED'
+	| 'BLOCK_LOW_AND_ABOVE'
+	| 'BLOCK_MEDIUM_AND_ABOVE'
+	| 'BLOCK_ONLY_HIGH'
+	| 'BLOCK_NONE';
+
+type AiSdkMessage =
+	| CoreSystemMessage
+	| CoreUserMessage
+	| CoreAssistantMessage
+	| CoreToolMessage;
+
+/**
+ * Helper function that builds either a single prompt/system or a messages array,
+ * depending on the user's choice of "prompt" vs "messages".
+ * 
+ * We define it as a top-level function (not a class method) so we don't get:
+ *  "Property 'buildInput' does not exist on type 'IExecuteFunctions'"
+ */
+async function buildInput(
+	exec: IExecuteFunctions,
+	itemIndex: number,
+): Promise<{ prompt?: string; system?: string; messages?: AiSdkMessage[] }> {
+	const inputType = exec.getNodeParameter('inputType', itemIndex) as 'prompt' | 'messages';
+
+	if (inputType === 'prompt') {
+		const promptVal = exec.getNodeParameter('prompt', itemIndex) as string;
+		const systemVal = exec.getNodeParameter('system', itemIndex) as string;
+		return {
+			prompt: promptVal,
+			system: systemVal,
+		};
+	} else {
+		// inputType === 'messages'
+		const messageAsJson = exec.getNodeParameter('messageAsJson', itemIndex, false) as boolean;
+
+		if (messageAsJson) {
+			const rawJson = exec.getNodeParameter('messagesJson', itemIndex) as string;
+			let arr: unknown[];
+			try {
+				arr = JSON.parse(rawJson);
+			} catch (error) {
+				throw new NodeOperationError(
+					exec.getNode(),
+					`Invalid JSON in "Messages (JSON)" field: ${(error as Error).message}`,
+				);
+			}
+
+			// Basic shape check
+			const parseRes = z
+				.array(
+					z.object({
+						role: z.enum(['system', 'user', 'assistant']),
+						content: z.any(),
+					}),
+				)
+				.safeParse(arr);
+
+			if (!parseRes.success) {
+				throw new NodeOperationError(
+					exec.getNode(),
+					'Messages must be an array of objects with role and content.',
+				);
+			}
+
+			const messages: AiSdkMessage[] = parseRes.data.map((m) => ({
+				role: m.role,
+				content: m.content,
+			}));
+			return { messages };
+		} else {
+			// Build from fixedCollection
+			const items = exec.getInputData();
+			const messagesUi = exec.getNodeParameter(
+				'messages.messagesUi',
+				itemIndex,
+				[],
+			) as Array<{
+				role: string;
+				systemContent?: string;
+				contentType?: 'text' | 'file';
+				fileDataSource?: 'binary' | 'url';
+				fileContent?: string;
+				fileUrl?: string;
+				mimeType?: string;
+				mimeTypeOther?: string;
+				content?: string;
+			}>;
+
+			const builtMessages: AiSdkMessage[] = [];
+
+			for (const msg of messagesUi) {
+				const role = msg.role as 'system' | 'assistant' | 'user';
+
+				if (role === 'system') {
+					builtMessages.push({
+						role,
+						content: msg.systemContent || '',
+					});
+					continue;
+				}
+
+				// assistant or user
+				if (msg.contentType === 'text') {
+					builtMessages.push({
+						role,
+						content: msg.content || '',
+					});
+				} else {
+					// contentType === 'file'
+					const parts: Array<Record<string, unknown>> = [];
+
+					// If there's additional text
+					if (msg.content) {
+						parts.push({
+							type: 'text',
+							text: msg.content,
+						});
+					}
+
+					// figure out mime type
+					let selectedMimeType = msg.mimeType || 'application/octet-stream';
+					if (selectedMimeType === 'other' && msg.mimeTypeOther) {
+						selectedMimeType = msg.mimeTypeOther;
+					}
+
+					if (msg.fileDataSource === 'url') {
+						// If user wants to use a URL
+						parts.push({
+							type: 'file',
+							data: msg.fileUrl,
+							mimeType: selectedMimeType,
+						});
+					} else {
+						// binary
+						const binaryProperty = msg.fileContent || 'data';
+						const itemBinary = items[itemIndex].binary;
+						if (!itemBinary || !itemBinary[binaryProperty]) {
+							throw new NodeOperationError(
+								exec.getNode(),
+								`Binary property "${binaryProperty}" not found on item index ${itemIndex}`,
+							);
+						}
+						const binaryData = itemBinary[binaryProperty];
+						const buffer = Buffer.from(
+							binaryData.data,
+							binaryData.data ? 'base64' : undefined,
+						);
+
+						if (
+							selectedMimeType === 'application/octet-stream' &&
+							binaryData.mimeType
+						) {
+							selectedMimeType = binaryData.mimeType;
+						}
+
+						parts.push({
+							type: 'file',
+							data: buffer,
+							mimeType: selectedMimeType,
+						});
+					}
+
+					builtMessages.push({
+						role,
+						// @ts-expect-error
+						content: parts,
+					});
+				}
+			}
+
+			return { messages: builtMessages };
+		}
+	}
+}
+
+/**
+ * Helper function to build a consistent JSON for n8n from a GenerateTextResult
+ */
+function formatTextResult(
+	result: GenerateTextResult<Record<string, CoreTool<any, any>>, never>,
+	includeRequestBody: boolean | undefined,
+) {
+	const out: Record<string, unknown> = {
+		text: result.text,
+		toolCalls: result.toolCalls || [],
+		toolResults: result.toolResults || [],
+		finishReason: result.finishReason,
+		usage: {
+			promptTokens: result.usage?.promptTokens,
+			completionTokens: result.usage?.completionTokens,
+			totalTokens: result.usage?.totalTokens,
+		},
+		response: {
+			id: result.response?.id,
+			modelId: result.response?.modelId,
+			timestamp: result.response?.timestamp,
+			headers: result.response?.headers,
+		},
+		steps: result.steps || [],
+		warnings: result.warnings || [],
+		experimental_providerMetadata: result.experimental_providerMetadata,
+	};
+
+	if (includeRequestBody) {
+		out.request = { body: result.request?.body };
+	}
+
+	return out;
+}
+
+function formatObjectResult(
+	result: GenerateObjectResult<unknown>,
+	includeRequestBody: boolean | undefined,
+) {
+	const out: Record<string, unknown> = {
+		object: result.object,
+		finishReason: result.finishReason,
+		usage: {
+			promptTokens: result.usage?.promptTokens,
+			completionTokens: result.usage?.completionTokens,
+			totalTokens: result.usage?.totalTokens,
+		},
+		response: {
+			id: result.response?.id,
+			modelId: result.response?.modelId,
+			timestamp: result.response?.timestamp,
+			headers: result.response?.headers,
+		},
+		warnings: result.warnings || [],
+		experimental_providerMetadata: result.experimental_providerMetadata,
+	};
+
+	if (includeRequestBody) {
+		out.request = { body: result.request?.body };
+	}
+
+	return out;
+}
+/**
+ * Main node class
+ */
 export class GoogleGenerativeAI implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Generative AI',
@@ -130,66 +389,6 @@ export class GoogleGenerativeAI implements INodeType {
 				required: true,
 				description: 'The single text prompt to generate a completion for.',
 				hint: 'You can drag data from previous nodes here using expressions.',
-				requiresDataPath: 'single',
-			},
-			{
-				displayName: 'Schema Name',
-				name: 'schemaName',
-				type: 'string',
-				default: '',
-				description: 'Name of the output schema (optional).',
-				hint: 'Some providers use this name for additional guidance when generating objects.',
-				displayOptions: {
-					show: {
-						operation: ['generateObject'],
-					},
-				},
-			},
-			{
-				displayName: 'Schema Description',
-				name: 'schemaDescription',
-				type: 'string',
-				default: '',
-				description: 'Description of the output schema (optional).',
-				hint: 'Some providers use this description for additional guidance when generating objects.',
-				displayOptions: {
-					show: {
-						operation: ['generateObject'],
-					},
-				},
-			},
-			{
-				displayName: 'Schema',
-				name: 'schema',
-				type: 'json',
-				displayOptions: {
-					show: {
-						operation: ['generateObject'],
-					},
-				},
-				default: `{
-  "type": "object",
-  "properties": {
-    "sentiment": {
-      "type": "string",
-      "enum": ["positive","negative","neutral"],
-      "description": "The overall sentiment of the text"
-    },
-    "score": {
-      "type": "number",
-      "minimum": -1,
-      "maximum": 1,
-      "description": "Sentiment score from -1 (negative) to 1 (positive)"
-    },
-    "text": {
-      "type": "string",
-      "description": "The text content to analyze"
-    }
-  }
-}`,
-				required: true,
-				description: 'JSON schema describing the structure and constraints of the object to generate.',
-				hint: 'For example, a schema describing sentiment analysis output.',
 				requiresDataPath: 'single',
 			},
 			{
@@ -375,6 +574,10 @@ export class GoogleGenerativeAI implements INodeType {
 									'Select the MIME type of the file; choose Other to specify a custom MIME type',
 								options: [
 									{
+										name: 'Octet Stream (Default)',
+										value: 'application/octet-stream',
+									},
+									{
 										name: 'PDF (application/pdf)',
 										value: 'application/pdf',
 									},
@@ -391,15 +594,11 @@ export class GoogleGenerativeAI implements INodeType {
 										value: 'image/png',
 									},
 									{
-										name: 'WebP Image (image/webp)',
-										value: 'image/webp',
+										name: 'JSON (application/json)',
+										value: 'application/json',
 									},
 									{
-										name: 'MP3 Audio (audio/mp3)',
-										value: 'audio/mp3',
-									},
-									{
-										name: 'MPEG Audio (audio/mpeg)',
+										name: 'MP3 Audio (audio/mpeg)',
 										value: 'audio/mpeg',
 									},
 									{
@@ -407,36 +606,8 @@ export class GoogleGenerativeAI implements INodeType {
 										value: 'audio/wav',
 									},
 									{
-										name: 'AVI Video (video/avi)',
-										value: 'video/avi',
-									},
-									{
-										name: 'FLV Video (video/flv)',
-										value: 'video/flv',
-									},
-									{
-										name: 'MOV Video (video/mov)',
-										value: 'video/mov',
-									},
-									{
-										name: 'MPEG Video (video/mpeg)',
-										value: 'video/mpeg',
-									},
-									{
 										name: 'MP4 Video (video/mp4)',
 										value: 'video/mp4',
-									},
-									{
-										name: 'MPG Video (video/mpg)',
-										value: 'video/mpg',
-									},
-									{
-										name: 'MPEGPS Video (video/mpegps)',
-										value: 'video/mpegps',
-									},
-									{
-										name: 'WMV Video (video/wmv)',
-										value: 'video/wmv',
 									},
 									{
 										name: 'Other (Specify Below)',
@@ -521,6 +692,47 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 			},
 			{
+				displayName: 'Schema Name',
+				name: 'schemaName',
+				type: 'string',
+				default: '',
+				description: 'Name of the output schema (optional).',
+				hint: 'Some providers use this name for additional guidance when generating objects.',
+				displayOptions: {
+					show: {
+						operation: ['generateObject'],
+					},
+				},
+			},
+			{
+				displayName: 'Schema Description',
+				name: 'schemaDescription',
+				type: 'string',
+				default: '',
+				description: 'Description of the output schema (optional).',
+				hint: 'Some providers use this description for additional guidance when generating objects.',
+				displayOptions: {
+					show: {
+						operation: ['generateObject'],
+					},
+				},
+			},
+			{
+				displayName: 'Schema',
+				name: 'schema',
+				type: 'json',
+				displayOptions: {
+					show: {
+						operation: ['generateObject'],
+					},
+				},
+				default: `{\n\t"type": "object",\n\t"properties": {\n\t\t"sentiment": {\n\t\t"type": "string",\n\t\t"enum": ["positive","negative","neutral"],\n\t\t"description": "The overall sentiment of the text"\n\t\t},\n\t\t"score": {\n\t\t"type": "number",\n\t\t"minimum": -1,\n\t\t"maximum": 1,\n\t\t"description": "Sentiment score from -1 (negative) to 1 (positive)"\n\t\t},\n\t\t"text": {\n\t\t"type": "string",\n\t\t"description": "The text content to analyze"\n\t\t}\n\t}\n}`,
+				required: true,
+				description: 'JSON schema describing the structure and constraints of the object to generate.',
+				hint: 'For example, a schema describing sentiment analysis output.',
+				requiresDataPath: 'single',
+			},
+			{
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
@@ -577,22 +789,10 @@ export class GoogleGenerativeAI implements INodeType {
 								name: 'category',
 								type: 'options',
 								options: [
-									{
-										name: 'Hate Speech',
-										value: 'HARM_CATEGORY_HATE_SPEECH',
-									},
-									{
-										name: 'Dangerous Content',
-										value: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-									},
-									{
-										name: 'Harassment',
-										value: 'HARM_CATEGORY_HARASSMENT',
-									},
-									{
-										name: 'Sexually Explicit',
-										value: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-									},
+									{ name: 'Hate Speech', value: 'HARM_CATEGORY_HATE_SPEECH' },
+									{ name: 'Dangerous Content', value: 'HARM_CATEGORY_DANGEROUS_CONTENT' },
+									{ name: 'Harassment', value: 'HARM_CATEGORY_HARASSMENT' },
+									{ name: 'Sexually Explicit', value: 'HARM_CATEGORY_SEXUALLY_EXPLICIT' },
 								],
 								default: 'HARM_CATEGORY_HATE_SPEECH',
 							},
@@ -601,22 +801,10 @@ export class GoogleGenerativeAI implements INodeType {
 								name: 'threshold',
 								type: 'options',
 								options: [
-									{
-										name: 'Block Low and Above',
-										value: 'BLOCK_LOW_AND_ABOVE',
-									},
-									{
-										name: 'Block Medium and Above',
-										value: 'BLOCK_MEDIUM_AND_ABOVE',
-									},
-									{
-										name: 'Block Only High',
-										value: 'BLOCK_ONLY_HIGH',
-									},
-									{
-										name: 'Block None',
-										value: 'BLOCK_NONE',
-									},
+									{ name: 'Block Low and Above', value: 'BLOCK_LOW_AND_ABOVE' },
+									{ name: 'Block Medium and Above', value: 'BLOCK_MEDIUM_AND_ABOVE' },
+									{ name: 'Block Only High', value: 'BLOCK_ONLY_HIGH' },
+									{ name: 'Block None', value: 'BLOCK_NONE' },
 								],
 								default: 'BLOCK_MEDIUM_AND_ABOVE',
 							},
@@ -670,8 +858,7 @@ export class GoogleGenerativeAI implements INodeType {
 						}
 					}
 
-					returnData.sort((a, b) => a.name.localeCompare(b.name));
-					return returnData;
+					return returnData.sort((a, b) => a.name.localeCompare(b.name));
 				} catch (error) {
 					// If API call fails, return a fallback list
 					return [
@@ -700,11 +887,13 @@ export class GoogleGenerativeAI implements INodeType {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
+		// 1) Validate credentials
 		const credentials = await this.getCredentials('googleGenerativeAIApi');
 		if (!credentials?.apiKey) {
 			throw new NodeOperationError(this.getNode(), 'No API key provided in credentials');
 		}
 
+		// 2) Create the GoogleGenerativeAI provider
 		const googleProvider = createGoogleGenerativeAI({
 			apiKey: credentials.apiKey as string,
 			baseURL: 'https://generativelanguage.googleapis.com/v1beta',
@@ -713,324 +902,137 @@ export class GoogleGenerativeAI implements INodeType {
 			},
 		});
 
+		// 3) Process each input item
 		for (let i = 0; i < items.length; i++) {
-			const parsedOperation = z
-				.enum(['generateText', 'generateObject'])
-				.safeParse(this.getNodeParameter('operation', i));
-			if (!parsedOperation.success) {
-				throw new NodeOperationError(this.getNode(), parsedOperation.error.message);
-			}
-
-			const parsedInputType = z
-				.enum(['prompt', 'messages'])
-				.safeParse(this.getNodeParameter('inputType', i));
-			if (!parsedInputType.success) {
-				throw new NodeOperationError(this.getNode(), parsedInputType.error.message);
-			}
-
-			const parsedModel = z.string().safeParse(this.getNodeParameter('model', i));
-			if (!parsedModel.success) {
-				throw new NodeOperationError(this.getNode(), parsedModel.error.message);
-			}
-
-			const parsedOptions = z
-				.object({
-					maxTokens: z.number().optional(),
-					temperature: z.number().optional(),
-					includeRequestBody: z.boolean().optional(),
-				})
-				.safeParse(this.getNodeParameter('options', i, {}));
-			if (!parsedOptions.success) {
-				throw new NodeOperationError(this.getNode(), parsedOptions.error.message);
-			}
-
-			const parsedSafetySettings = z
-				.array(
-					z.object({
-						category: z
-							.enum([
-								'HARM_CATEGORY_HATE_SPEECH',
-								'HARM_CATEGORY_DANGEROUS_CONTENT',
-								'HARM_CATEGORY_HARASSMENT',
-								'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-								'HARM_CATEGORY_UNSPECIFIED',
-								'HARM_CATEGORY_CIVIC_INTEGRITY',
-							])
-							.optional(),
-						threshold: z
-							.enum([
-								'BLOCK_LOW_AND_ABOVE',
-								'BLOCK_MEDIUM_AND_ABOVE',
-								'BLOCK_ONLY_HIGH',
-								'BLOCK_NONE',
-								'HARM_BLOCK_THRESHOLD_UNSPECIFIED',
-							])
-							.optional(),
-					}),
-				)
-				.safeParse(this.getNodeParameter('safetySettings.settings', i, []));
-			if (!parsedSafetySettings.success) {
-				throw new NodeOperationError(this.getNode(), parsedSafetySettings.error.message);
-			}
-
-			const useSearchGrounding = z
-				.boolean()
-				.safeParse(this.getNodeParameter('useSearchGrounding', i, false));
-			if (!useSearchGrounding.success) {
-				throw new NodeOperationError(this.getNode(), useSearchGrounding.error.message);
-			}
-
-			/**
-			 * Helper function to wrap the result in n8n’s data structure.
-			 */
-			const extractResponse = (
-				result: GenerateTextResult<Record<string, CoreTool<any, any>>, never>,
-			) => {
-				return {
-					json: {
-						text: result.text,
-						toolCalls: result.toolCalls || [],
-						toolResults: result.toolResults || [],
-						finishReason: result.finishReason,
-						usage: {
-							promptTokens: result.usage?.promptTokens,
-							completionTokens: result.usage?.completionTokens,
-							totalTokens: result.usage?.totalTokens,
-						},
-						...(parsedOptions.data.includeRequestBody && {
-							request: {
-								body: result.request?.body,
-							},
-						}),
-						response: {
-							id: result.response?.id,
-							modelId: result.response?.modelId,
-							timestamp: result.response?.timestamp,
-							headers: result.response?.headers,
-						},
-						steps: result.steps || [],
-						warnings: result.warnings || [],
-						experimental_providerMetadata: result.experimental_providerMetadata,
-					},
+			try {
+				// Basic parameters
+				const operation = this.getNodeParameter('operation', i) as 'generateText' | 'generateObject';
+				const model = this.getNodeParameter('model', i) as string;
+				const options = this.getNodeParameter('options', i, {}) as {
+					maxTokens?: number;
+					temperature?: number;
+					includeRequestBody?: boolean;
 				};
-			};
 
-			/**
-			 * Handle "Generate Text"
-			 */
-			if (parsedOperation.data === 'generateText') {
-				if (parsedInputType.data === 'prompt') {
-					const promptVal = this.getNodeParameter('prompt', i) as string;
-					const systemVal = this.getNodeParameter('system', i) as string;
+				// Safety settings
+				const safetySettingsRaw = this.getNodeParameter('safetySettings.settings', i, []) as Array<{
+					category: string;
+					threshold: string;
+				}>;
+				const useSearchGrounding = this.getNodeParameter('useSearchGrounding', i, false) as boolean;
 
-					const parsedPrompt = z.string().safeParse(promptVal);
-					if (!parsedPrompt.success) {
-						throw new NodeOperationError(this.getNode(), parsedPrompt.error.message);
-					}
-					const parsedSystem = z.string().safeParse(systemVal);
-					if (!parsedSystem.success) {
-						throw new NodeOperationError(this.getNode(), parsedSystem.error.message);
-					}
+				// Convert to narrower union types with a cast
+				const safetySettings = safetySettingsRaw.map((s) => ({
+					category: s.category as GoogleHarmCategory,
+					threshold: s.threshold as GoogleHarmThreshold,
+				}));
 
-					const result = await generateText({
-						model: googleProvider(parsedModel.data, {
-							...(parsedSafetySettings.data.length > 0
-								? {
-									safetySettings: parsedSafetySettings.data.map((setting) => ({
-										category: setting.category!,
-										threshold: setting.threshold!,
-									})),
-								}
-								: {}),
-							useSearchGrounding: useSearchGrounding.data,
-						}),
-						prompt: parsedPrompt.data,
-						system: parsedSystem.data,
-						maxTokens: parsedOptions.data.maxTokens,
-						temperature: parsedOptions.data.temperature,
-					});
+				// Build model config
+				const modelConfig = {
+					structuredOutputs: operation === 'generateObject', // optional
+					safetySettings: safetySettings.length > 0 ? safetySettings : undefined,
+					useSearchGrounding,
+				};
 
-					returnData.push(extractResponse(result));
-				} else if (parsedInputType.data === 'messages') {
-					let messages: Array<
-						CoreSystemMessage | CoreUserMessage | CoreAssistantMessage | CoreToolMessage
-					> | undefined = undefined;
+				// Build input (prompt or messages)
+				const input = await buildInput(this, i);
 
-					const parsedMessageAsJson = z
-						.boolean()
-						.safeParse(this.getNodeParameter('messageAsJson', i, false));
-					if (!parsedMessageAsJson.success) {
-						throw new NodeOperationError(this.getNode(), parsedMessageAsJson.error.message);
-					}
+				// Branch on operation
+				if (operation === 'generateText') {
+					//  ~~~~~~~~~~~~~
+					//  Generate Text
+					//  ~~~~~~~~~~~~~
+					let result: GenerateTextResult<Record<string, CoreTool<any, any>>, never>;
 
-					if (parsedMessageAsJson.data) {
-						// If user opted to provide raw JSON
-						const messagesJsonParam = this.getNodeParameter('messagesJson', i) as string;
-						let parsedJson: unknown;
-						try {
-							parsedJson = JSON.parse(messagesJsonParam?.toString() || '[]');
-						} catch (error) {
-							throw new NodeOperationError(
-								this.getNode(),
-								'Invalid JSON in Messages (JSON) field',
-							);
-						}
-
-						const parsedMessagesJson = z
-							.array(
-								z.object({
-									role: z.enum(['system', 'user', 'assistant']),
-									content: z.any(),
-								}),
-							)
-							.safeParse(parsedJson);
-						if (!parsedMessagesJson.success) {
-							throw new NodeOperationError(
-								this.getNode(),
-								'Invalid message format in Messages (JSON) field. Must be an array of objects with role and content.',
-							);
-						}
-
-						messages = parsedMessagesJson.data.map((m) => ({
-							role: m.role,
-							content: m.content,
-						}));
+					if (input.prompt) {
+						// Single prompt
+						result = await generateText({
+							model: googleProvider(model, modelConfig),
+							prompt: input.prompt,
+							system: input.system,
+							maxTokens: options.maxTokens,
+							temperature: options.temperature,
+						});
 					} else {
-						// Parse from the UI-based collection
-						const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
-							role: string;
-							systemContent?: string;
-							contentType?: 'text' | 'file';
-							fileDataSource?: 'binary' | 'url';
-							fileContent?: string;
-							fileUrl?: string;
-							mimeType?: string; // Could be 'other' or a known type
-							mimeTypeOther?: string; // If user picks 'other'
-							content?: string;
-						}>;
-
-						// @ts-expect-error
-						messages = messagesUi.map((m) => {
-							const role = m.role as 'system' | 'assistant' | 'user';
-
-							// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-							// SYSTEM MESSAGES
-							// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-							if (role === 'system') {
-								return {
-									role,
-									content: m.systemContent || '',
-								};
-							}
-
-							// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-							// USER / ASSISTANT MESSAGES
-							// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-							if (m.contentType === 'text') {
-								// single text part
-								return {
-									role,
-									content: m.content || '',
-								};
-							} else {
-								// contentType === 'file'
-								// We'll build an array of parts: optional text part + a file part
-								const parts: Array<Record<string, any>> = [];
-
-								if (m.content) {
-									// Additional text
-									parts.push({
-										type: 'text',
-										text: m.content,
-									});
-								}
-
-								// Determine final MIME type from the dropdown or "Other"
-								let selectedMimeType = m.mimeType || 'application/octet-stream';
-								if (selectedMimeType === 'other' && m.mimeTypeOther) {
-									selectedMimeType = m.mimeTypeOther;
-								}
-
-								if (m.fileDataSource === 'url') {
-									// If user wants to use a URL
-									parts.push({
-										type: 'file',
-										data: m.fileUrl, // The AI SDK will fetch if this is an http(s) string
-										mimeType: selectedMimeType,
-									});
-								} else {
-									// fileDataSource === 'binary'
-									const binaryPropertyName = m.fileContent || 'data';
-									const itemBinary = items[i].binary;
-									if (!itemBinary || !itemBinary[binaryPropertyName]) {
-										throw new NodeOperationError(
-											this.getNode(),
-											`Binary property "${binaryPropertyName}" not found on item index ${i}`,
-										);
-									}
-									// Convert base64 string to Buffer
-									const binaryData = itemBinary[binaryPropertyName];
-									const buffer = Buffer.from(
-										binaryData.data,
-										binaryData.data ? 'base64' : undefined,
-									);
-
-									// If user had not picked a known MIME type, or "Default", we fallback:
-									if (
-										selectedMimeType === 'application/octet-stream' &&
-										binaryData.mimeType
-									) {
-										selectedMimeType = binaryData.mimeType;
-									}
-
-									parts.push({
-										type: 'file',
-										data: buffer,
-										mimeType: selectedMimeType,
-									});
-								}
-
-								return {
-									role,
-									content: parts,
-								};
-							}
+						// We have messages
+						result = await generateText({
+							model: googleProvider(model, modelConfig),
+							messages: input.messages,
+							maxTokens: options.maxTokens,
+							temperature: options.temperature,
 						});
 					}
 
-					const result = await generateText({
-						model: googleProvider(parsedModel.data, {
-							...(parsedSafetySettings.data.length > 0
-								? {
-									safetySettings: parsedSafetySettings.data.map((setting) => ({
-										category: setting.category!,
-										threshold: setting.threshold!,
-									})),
-								}
-								: {}),
-							useSearchGrounding: useSearchGrounding.data,
-						}),
-						messages,
-						maxTokens: parsedOptions.data.maxTokens,
-						temperature: parsedOptions.data.temperature,
+					// Format output
+					const formatted = formatTextResult(result, options.includeRequestBody);
+					// @ts-expect-error
+					returnData.push({ json: formatted });
+				} else {
+					//  ~~~~~~~~~~~~~
+					//  Generate Object
+					//  ~~~~~~~~~~~~~
+					const schemaName = this.getNodeParameter('schemaName', i, '') as string;
+					const schemaDescription = this.getNodeParameter('schemaDescription', i, '') as string;
+					const rawSchema = this.getNodeParameter('schema', i) as string;
+
+					let parsedSchema: any;
+					try {
+						parsedSchema = JSON.parse(rawSchema);
+					} catch (err) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'Schema is not valid JSON: ' + (err as Error).message,
+						);
+					}
+
+					// Validate the schema with Ajv
+					const ajv = new Ajv();
+					if (!ajv.validateSchema(parsedSchema)) {
+						throw new NodeOperationError(
+							this.getNode(),
+							`Invalid JSON Schema: ${ajv.errorsText(ajv.errors)}`,
+						);
+					}
+
+					// Now call generateObject
+					const result = await generateObject({
+						model: googleProvider(model, modelConfig),
+						schema: jsonSchema(parsedSchema),
+						schemaName,
+						schemaDescription,
+						prompt: input.prompt,
+						system: input.system,
+						messages: input.messages,
+						maxTokens: options.maxTokens,
+						temperature: options.temperature,
 					});
 
-					returnData.push(extractResponse(result));
-				}
-			}
+					// The output is in result.object
+					const formatted = formatObjectResult(result, options.includeRequestBody);
 
-			/**
-			 * Handle "Generate Object"
-			 * (You could parse the schema and call generateText similarly)
-			 */
-			if (parsedOperation.data === 'generateObject') {
-				throw new NodeOperationError(
-					this.getNode(),
-					'Generate Object is not yet implemented in this example.',
-				);
+
+					// // Optionally validate final object
+					// const validateFinal = ajv.compile(parsedSchema);
+					// if (!validateFinal(result.object)) {
+					// 	throw new NodeOperationError(
+					// 		this.getNode(),
+					// 		`The generated object doesn't match the schema: ${ajv.errorsText(validateFinal.errors)}`,
+					// 	);
+					// }
+
+					// @ts-expect-error
+					returnData.push({ json: formatted });
+				}
+			} catch (error) {
+				if (this.continueOnFail()) {
+					returnData.push({ json: { error: (error as Error).message } });
+				} else {
+					throw new NodeOperationError(this.getNode(), error as Error, { itemIndex: i });
+				}
 			}
 		}
 
+		// 4) Return final data
 		return [returnData];
 	}
 }
