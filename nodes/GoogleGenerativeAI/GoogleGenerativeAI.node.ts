@@ -3,7 +3,6 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeConnectionType,
 	NodeOperationError,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
@@ -270,7 +269,7 @@ function formatObjectResult(
 export class GoogleGenerativeAI implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Generative AI',
-		name: 'googleGenerativeAI',
+		name: 'googleGenerativeAi',
 		icon: 'file:icons/GoogleGenerativeAI.svg',
 		group: ['transform'],
 		version: 1,
@@ -279,8 +278,8 @@ export class GoogleGenerativeAI implements INodeType {
 		defaults: {
 			name: 'Google Generative AI',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
+		inputs: ['main'],
+		outputs: ['main'],
 		credentials: [
 			{
 				name: 'googleGenerativeAIApi',
@@ -309,18 +308,18 @@ export class GoogleGenerativeAI implements INodeType {
 					},
 				],
 				default: 'generateText',
-				description: 'Which type of output you want to generate.',
+				description: 'Which type of output you want to generate',
 			},
 			{
-				displayName: 'Model',
+				displayName: 'Model Name or ID',
 				name: 'model',
 				type: 'options',
 				required: true,
 				typeOptions: {
 					loadOptionsMethod: 'getModels',
 				},
-				default: 'gemini-2.0-flash-exp',
-				description: 'Select which Google Generative AI model to use.',
+				default: '',
+				description: 'Select which Google Generative AI model to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Input Type',
@@ -340,7 +339,7 @@ export class GoogleGenerativeAI implements INodeType {
 					},
 				],
 				default: 'prompt',
-				description: 'Choose how you want to provide input to the model.',
+				description: 'Choose how you want to provide input to the model',
 			},
 			{
 				displayName: 'System',
@@ -355,8 +354,8 @@ export class GoogleGenerativeAI implements INodeType {
 					},
 				},
 				default: 'You are a helpful assistant.',
-				description: 'System prompt that specifies the model’s behavior.',
-				hint: 'This field is optional, but can help guide the model’s responses.',
+				description: 'System prompt that specifies the model\'s behavior',
+				hint: 'This field is optional, but can help guide the model\'s responses.',
 				requiresDataPath: 'single',
 			},
 			{
@@ -373,7 +372,7 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 				default: '',
 				required: true,
-				description: 'The single text prompt to generate a completion for.',
+				description: 'The single text prompt to generate a completion for',
 				hint: 'You can drag data from previous nodes here using expressions.',
 				requiresDataPath: 'single',
 			},
@@ -392,7 +391,7 @@ export class GoogleGenerativeAI implements INodeType {
 						messageAsJson: [false],
 					},
 				},
-				description: 'The messages for the conversation.',
+				description: 'The messages for the conversation',
 				default: {
 					messagesUi: [
 						{
@@ -560,44 +559,44 @@ export class GoogleGenerativeAI implements INodeType {
 									'Select the MIME type of the file; choose Other to specify a custom MIME type',
 								options: [
 									{
+										name: 'JPEG Image (Image/jpeg)',
+										value: 'image/jpeg',
+									},
+									{
+										name: 'JSON (Application/json)',
+										value: 'application/json',
+									},
+									{
+										name: 'MP3 Audio (Audio/mpeg)',
+										value: 'audio/mpeg',
+									},
+									{
+										name: 'MP4 Video (Video/mp4)',
+										value: 'video/mp4',
+									},
+									{
 										name: 'Octet Stream (Default)',
 										value: 'application/octet-stream',
 									},
 									{
-										name: 'PDF (application/pdf)',
+										name: 'Other (Specify Below)',
+										value: 'other',
+									},
+									{
+										name: 'PDF (Application/pdf)',
 										value: 'application/pdf',
 									},
 									{
-										name: 'Plain Text (text/plain)',
+										name: 'Plain Text (Text/plain)',
 										value: 'text/plain',
 									},
 									{
-										name: 'JPEG Image (image/jpeg)',
-										value: 'image/jpeg',
-									},
-									{
-										name: 'PNG Image (image/png)',
+										name: 'PNG Image (Image/png)',
 										value: 'image/png',
 									},
 									{
-										name: 'JSON (application/json)',
-										value: 'application/json',
-									},
-									{
-										name: 'MP3 Audio (audio/mpeg)',
-										value: 'audio/mpeg',
-									},
-									{
-										name: 'WAV Audio (audio/wav)',
+										name: 'WAV Audio (Audio/wav)',
 										value: 'audio/wav',
-									},
-									{
-										name: 'MP4 Video (video/mp4)',
-										value: 'video/mp4',
-									},
-									{
-										name: 'Other (Specify Below)',
-										value: 'other',
 									},
 								],
 								displayOptions: {
@@ -649,7 +648,7 @@ export class GoogleGenerativeAI implements INodeType {
 				name: 'messageAsJson',
 				type: 'boolean',
 				default: false,
-				description: 'Toggle to provide the entire message array as a JSON string.',
+				description: 'Whether to input messages as a JSON array instead of using the UI',
 				displayOptions: {
 					show: {
 						operation: ['generateText', 'generateObject'],
@@ -662,7 +661,7 @@ export class GoogleGenerativeAI implements INodeType {
 				name: 'messagesJson',
 				type: 'string',
 				default: '=[{"role": "user", "content": "Hello!"}]',
-				description: 'Enter an array of message objects in JSON format (role, content).',
+				description: 'Enter an array of message objects in JSON format (role, content)',
 				required: true,
 				typeOptions: {
 					rows: 4,
@@ -682,7 +681,7 @@ export class GoogleGenerativeAI implements INodeType {
 				name: 'schemaName',
 				type: 'string',
 				default: '',
-				description: 'Name of the output schema (optional).',
+				description: 'Name of the output schema (optional)',
 				hint: 'Some providers use this name for additional guidance when generating objects.',
 				displayOptions: {
 					show: {
@@ -695,7 +694,7 @@ export class GoogleGenerativeAI implements INodeType {
 				name: 'schemaDescription',
 				type: 'string',
 				default: '',
-				description: 'Description of the output schema (optional).',
+				description: 'Description of the output schema (optional)',
 				hint: 'Some providers use this description for additional guidance when generating objects.',
 				displayOptions: {
 					show: {
@@ -714,8 +713,7 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 				default: `{\n\t"type": "object",\n\t"properties": {\n\t\t"sentiment": {\n\t\t"type": "string",\n\t\t"enum": ["positive","negative","neutral"],\n\t\t"description": "The overall sentiment of the text"\n\t\t},\n\t\t"score": {\n\t\t"type": "number",\n\t\t"minimum": -1,\n\t\t"maximum": 1,\n\t\t"description": "Sentiment score from -1 (negative) to 1 (positive)"\n\t\t},\n\t\t"text": {\n\t\t"type": "string",\n\t\t"description": "The text content to analyze"\n\t\t}\n\t}\n}`,
 				required: true,
-				description:
-					'JSON schema describing the structure and constraints of the object to generate.',
+				description: 'JSON schema describing the structure and constraints of the object to generate',
 				hint: 'For example, a schema describing sentiment analysis output.',
 				requiresDataPath: 'single',
 			},
@@ -734,7 +732,7 @@ export class GoogleGenerativeAI implements INodeType {
 							minValue: 1,
 						},
 						default: 2048,
-						description: 'The maximum number of tokens to generate.',
+						description: 'The maximum number of tokens to generate',
 					},
 					{
 						displayName: 'Temperature',
@@ -746,15 +744,14 @@ export class GoogleGenerativeAI implements INodeType {
 							numberPrecision: 2,
 						},
 						default: 0.7,
-						description: 'Higher values produce more random outputs.',
+						description: 'Higher values produce more random outputs',
 					},
 					{
 						displayName: 'Include Request Body',
 						name: 'includeRequestBody',
 						type: 'boolean',
 						default: false,
-						description:
-							'Whether to include the full request body in the response. Warning: can be large if files are included.',
+						description: 'Whether to include the request body in the output',
 					},
 				],
 			},
@@ -798,14 +795,14 @@ export class GoogleGenerativeAI implements INodeType {
 						],
 					},
 				],
-				description: 'Set safety categories and thresholds to block or filter certain outputs.',
+				description: 'Set safety categories and thresholds to block or filter certain outputs',
 			},
 			{
 				displayName: 'Use Search Grounding',
 				name: 'useSearchGrounding',
 				type: 'boolean',
 				default: false,
-				description: 'Enable for real-time or up-to-date information if supported by the model.',
+				description: 'Whether to enable real-time or up-to-date information if supported by the model',
 			},
 		],
 	};
