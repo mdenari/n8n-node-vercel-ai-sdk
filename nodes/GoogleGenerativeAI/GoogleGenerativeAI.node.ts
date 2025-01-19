@@ -212,7 +212,7 @@ export class GoogleGenerativeAI implements INodeType {
 					messagesUi: [
 						{
 							role: 'system',
-							systemContent: 'You are a helpful assistant.', // Matches new key
+							systemContent: 'You are a helpful assistant.',
 						},
 						{
 							role: 'user',
@@ -308,19 +308,76 @@ export class GoogleGenerativeAI implements INodeType {
 								required: true,
 								requiresDataPath: 'single',
 							},
+							// For file usage
 							{
-								displayName: 'Input Binary Field',
-								name: 'fileContent',
-								type: 'string',
+								displayName: 'File Source',
+								name: 'fileDataSource',
+								type: 'options',
+								options: [
+									{
+										name: 'Binary',
+										value: 'binary',
+										description: 'Use a binary property from n8n input',
+									},
+									{
+										name: 'URL',
+										value: 'url',
+										description: 'Send a URL for the AI to fetch',
+									},
+								],
+								default: 'binary',
+								description: 'Where the file is coming from',
 								displayOptions: {
 									show: {
 										role: ['assistant', 'user'],
 										contentType: ['file'],
 									},
 								},
+							},
+							{
+								displayName: 'Binary Property',
+								name: 'fileContent',
+								type: 'string',
 								default: 'data',
-								description: 'The name of the input binary field containing the file',
+								description: 'Name of the binary property containing the file data',
 								required: true,
+								displayOptions: {
+									show: {
+										role: ['assistant', 'user'],
+										contentType: ['file'],
+										fileDataSource: ['binary'],
+									},
+								},
+							},
+							{
+								displayName: 'File URL',
+								name: 'fileUrl',
+								type: 'string',
+								default: '',
+								description: 'URL of the file to download',
+								required: true,
+								displayOptions: {
+									show: {
+										role: ['assistant', 'user'],
+										contentType: ['file'],
+										fileDataSource: ['url'],
+									},
+								},
+								requiresDataPath: 'single',
+							},
+							{
+								displayName: 'MIME Type',
+								name: 'mimeType',
+								type: 'string',
+								default: '',
+								description:
+									'Optional override for the file’s MIME type, e.g. "application/pdf"',
+								displayOptions: {
+									show: {
+										role: ['assistant', 'user'],
+										contentType: ['file'],
+									},
+								},
 							},
 							{
 								displayName: 'Additional Text',
@@ -336,7 +393,7 @@ export class GoogleGenerativeAI implements INodeType {
 									},
 								},
 								default: 'Please analyze this file.',
-								description: 'Additional text to send with the file',
+								description: 'Additional text to include with the file',
 								required: true,
 								requiresDataPath: 'single',
 							},
@@ -411,7 +468,8 @@ export class GoogleGenerativeAI implements INodeType {
 						name: 'includeRequestBody',
 						type: 'boolean',
 						default: false,
-						description: 'Whether to include the full request body in the response. Warning: can be large if files are included.',
+						description:
+							'Whether to include the full request body in the response. Warning: can be large if files are included.',
 					},
 				],
 			},
@@ -643,7 +701,6 @@ export class GoogleGenerativeAI implements INodeType {
 			) => {
 				return {
 					json: {
-						// The main text
 						text: result.text,
 						toolCalls: result.toolCalls || [],
 						toolResults: result.toolResults || [],
@@ -683,7 +740,6 @@ export class GoogleGenerativeAI implements INodeType {
 					if (!parsedPrompt.success) {
 						throw new NodeOperationError(this.getNode(), parsedPrompt.error.message);
 					}
-
 					const parsedSystem = z.string().safeParse(systemVal);
 					if (!parsedSystem.success) {
 						throw new NodeOperationError(this.getNode(), parsedSystem.error.message);
@@ -737,7 +793,7 @@ export class GoogleGenerativeAI implements INodeType {
 							.array(
 								z.object({
 									role: z.enum(['system', 'user', 'assistant']),
-									content: z.string(),
+									content: z.any(),
 								}),
 							)
 							.safeParse(parsedJson);
@@ -748,47 +804,111 @@ export class GoogleGenerativeAI implements INodeType {
 							);
 						}
 
-						messages = parsedMessagesJson.data.map((m) => ({
-							role: m.role,
-							content: m.content,
-						}));
+						// If content is a string, we assume a single text piece
+						messages = parsedMessagesJson.data.map((m) => {
+							// If the user gave content as a string or array, pass it through.
+							return {
+								role: m.role,
+								content: m.content,
+							};
+						});
 					} else {
 						// Parse from the UI-based collection
 						const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
 							role: string;
 							systemContent?: string;
-							contentType?: string;
-							content?: string;
+							contentType?: 'text' | 'file';
+							fileDataSource?: 'binary' | 'url';
 							fileContent?: string;
+							fileUrl?: string;
+							mimeType?: string;
+							content?: string;
 						}>;
 
+						// @ts-expect-error
 						messages = messagesUi.map((m) => {
-							const role = m.role as 'user' | 'assistant' | 'system';
+							const role = m.role as 'system' | 'assistant' | 'user';
+
+							// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+							// SYSTEM MESSAGES
+							// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 							if (role === 'system') {
-								// For system messages, we only have systemContent
 								return {
 									role,
 									content: m.systemContent || '',
 								};
+							}
+
+							// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+							// USER / ASSISTANT MESSAGES
+							// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+							if (m.contentType === 'text') {
+								// single text part
+								return {
+									role,
+									// For text, we can just store a string or an array with a single text part
+									content: m.content || '',
+								};
 							} else {
-								// For user/assistant, check contentType
-								if (m.contentType === 'text') {
-									return {
-										role,
-										content: m.content || '',
-									};
-								} else {
-									// Binary file scenario
-									// For LLM usage, you might store references or upload
-									// Here, we just put a placeholder text referencing the file
-									const fileField = m.fileContent || 'data';
-									const additionalText = m.content || '';
-									const content = `File field: ${fileField}\nAdditional: ${additionalText}`;
-									return {
-										role,
-										content,
-									};
+								// contentType === 'file'
+								// We'll build an array of parts. Possibly an additional text part + a file part.
+								const parts: Array<Record<string, any>> = [];
+
+								if (m.content) {
+									// Additional text
+									parts.push({
+										type: 'text',
+										text: m.content,
+									});
 								}
+
+								let mimeType = m.mimeType || '';
+								if (!mimeType) {
+									// fallback if none is provided
+									mimeType = 'application/octet-stream';
+								}
+
+								if (m.fileDataSource === 'url') {
+									// If user wants to use a URL
+									parts.push({
+										type: 'file',
+										data: m.fileUrl, // The AI SDK will fetch if this is an http(s) string
+										mimeType,
+									});
+								} else {
+									// fileDataSource === 'binary'
+									const binaryPropertyName = m.fileContent || 'data';
+									const itemBinary = items[i].binary;
+									if (!itemBinary || !itemBinary[binaryPropertyName]) {
+										throw new NodeOperationError(
+											this.getNode(),
+											`Binary property "${binaryPropertyName}" not found on item index ${i}`,
+										);
+									}
+									// Convert base64 string to Buffer
+									const binaryData = itemBinary[binaryPropertyName];
+									const buffer = Buffer.from(
+										binaryData.data,
+										binaryData.data ? 'base64' : undefined,
+									);
+
+									// If the user didn't specify a MIME type, attempt to use the binary data’s
+									if (m.mimeType === '') {
+										mimeType =
+											binaryData.mimeType || 'application/octet-stream';
+									}
+
+									parts.push({
+										type: 'file',
+										data: buffer,
+										mimeType,
+									});
+								}
+
+								return {
+									role,
+									content: parts,
+								};
 							}
 						});
 					}
@@ -816,10 +936,9 @@ export class GoogleGenerativeAI implements INodeType {
 
 			/**
 			 * Handle "Generate Object"
-			 * (Fill in your own logic for using the JSON schema if needed)
+			 * (You could parse the schema and call generateText similarly)
 			 */
 			if (parsedOperation.data === 'generateObject') {
-				// Example placeholder
 				throw new NodeOperationError(
 					this.getNode(),
 					'Generate Object is not yet implemented in this example.',
