@@ -942,26 +942,19 @@ export class GoogleGenerativeAI implements INodeType {
 					//  ~~~~~~~~~~~~~
 					//  Generate Text
 					//  ~~~~~~~~~~~~~
-					let result: GenerateTextResult<Record<string, CoreTool<any, any>>, never>;
 
-					if (input.prompt) {
-						// Single prompt
-						result = await generateText({
-							model: googleProvider(model, modelSettings),
-							prompt: input.prompt,
-							system: input.system,
-							maxTokens: options.maxTokens,
-							temperature: options.temperature,
-						});
-					} else {
-						// We have messages
-						result = await generateText({
-							model: googleProvider(model, modelSettings),
-							messages: input.messages,
-							maxTokens: options.maxTokens,
-							temperature: options.temperature,
-						});
-					}
+
+					const result = await generateText({
+						model: googleProvider(model, {
+							...modelSettings,
+							// audioTimestamp: input.messages?.some((m) => Array.isArray(m.content) && m.content.some(part => 'type' in part && part.type === 'file' && 'mimeType' in part && part.mimeType?.startsWith('audio/'))) ?? false,
+						}),
+						messages: input.messages,
+						maxTokens: options.maxTokens,
+						temperature: options.temperature,
+						prompt: input.prompt,
+						system: input.system,
+					});
 
 					// Format output
 					const formatted = formatTextResult(result, options.includeRequestBody);
@@ -996,7 +989,10 @@ export class GoogleGenerativeAI implements INodeType {
 
 					// Now call generateObject
 					const result = await generateObject({
-						model: googleProvider(model, modelSettings),
+						model: googleProvider(model, {
+							...modelSettings,
+							// audioTimestamp: input.messages?.some((m) => Array.isArray(m.content) && m.content.some(part => 'type' in part && part.type === 'file' && 'mimeType' in part && part.mimeType?.startsWith('audio/'))) ?? false,
+						}),
 						schema: jsonSchema(parsedSchema),
 						schemaName,
 						schemaDescription,
