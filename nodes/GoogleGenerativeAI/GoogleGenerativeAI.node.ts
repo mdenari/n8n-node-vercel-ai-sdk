@@ -10,14 +10,33 @@ import {
 	type INodePropertyOptions,
 } from 'n8n-workflow';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateText } from 'ai';
+import { generateText, type Message as AIMessage } from 'ai';
 import type { GoogleGenerativeAIProviderMetadata } from '@ai-sdk/google';
 
 type Role = 'system' | 'user' | 'assistant';
 
-interface ChatMessage {
+interface TextPart {
+	type: 'text';
+	text: string;
+}
+
+interface ImagePart {
+	type: 'image';
+	image: Buffer | string;
+}
+
+interface FilePart {
+	type: 'file';
+	data: Buffer | string;
+	mimeType: string;
+}
+
+type ContentPart = TextPart | ImagePart | FilePart;
+
+interface Message {
+	id?: string;
 	role: Role;
-	content: string;
+	content: string | ContentPart[];
 }
 
 type SafetyCategory =
@@ -147,13 +166,90 @@ export class GoogleGenerativeAI implements INodeType {
 								default: 'user',
 							},
 							{
-								displayName: 'Content',
+								displayName: 'Content Type',
+								name: 'contentType',
+								type: 'options',
+								options: [
+									{
+										name: 'Text',
+										value: 'text',
+									},
+									{
+										name: 'Binary File',
+										value: 'file',
+									},
+								],
+								default: 'text',
+								description: 'The type of content to send',
+							},
+							{
+								displayName: 'Text Content',
 								name: 'content',
 								type: 'string',
 								typeOptions: {
 									rows: 4,
 								},
+								displayOptions: {
+									show: {
+										contentType: ['text'],
+									},
+								},
 								default: '',
+								description: 'The text content of the message',
+							},
+							{
+								displayName: 'Input Binary Field',
+								name: 'fileContent',
+								type: 'string',
+								displayOptions: {
+									show: {
+										contentType: ['file'],
+									},
+								},
+								default: 'data',
+								description: 'The name of the input binary field containing the file',
+							},
+							{
+								displayName: 'Additional Text',
+								name: 'content',
+								type: 'string',
+								typeOptions: {
+									rows: 2,
+								},
+								displayOptions: {
+									show: {
+										contentType: ['file'],
+									},
+								},
+								default: 'Please analyze this file.',
+								description: 'Additional text to send with the file',
+							},
+							{
+								displayName: 'Options',
+								name: 'fileOptions',
+								type: 'collection',
+								displayOptions: {
+									show: {
+										contentType: ['file'],
+									},
+								},
+								default: {},
+								options: [
+									{
+										displayName: 'Force Image Type',
+										name: 'forceImageType',
+										type: 'boolean',
+										default: false,
+										description: 'Whether to force treating the file as an image, even if the MIME type does not indicate an image',
+									},
+									{
+										displayName: 'Force File Type',
+										name: 'forceFileType',
+										type: 'boolean',
+										default: false,
+										description: 'Whether to force treating the file as a regular file, even if the MIME type indicates an image',
+									},
+								],
 							},
 						],
 					},
@@ -385,14 +481,14 @@ export class GoogleGenerativeAI implements INodeType {
 
 				if (operation === 'complete') {
 					const prompt = this.getNodeParameter('prompt', i) as string;
-					const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
+					const messages: Message[] = [{ role: 'user', content: prompt, id: `msg_${Date.now()}` }];
 
 					const result = await generateText({
 						model: googleProvider(model, {
 							safetySettings: safetySettings,
 							useSearchGrounding: useSearchGrounding,
 						}),
-						messages,
+						messages: messages as AIMessage[],
 						maxTokens: options.maxTokens,
 						temperature: options.temperature,
 					});
@@ -446,20 +542,70 @@ export class GoogleGenerativeAI implements INodeType {
 					}
 				} else if (operation === 'chat') {
 					const jsonParameters = this.getNodeParameter('jsonParameters', i) as boolean;
-					let messages: ChatMessage[];
+					let messages: Message[];
 
 					if (jsonParameters) {
 						const messagesJson = this.getNodeParameter('messagesJson', i) as string;
-						messages = JSON.parse(messagesJson);
+						const parsedMessages = JSON.parse(messagesJson);
+						messages = parsedMessages.map((msg: any) => ({
+							...msg,
+							id: msg.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+						}));
 					} else {
 						const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
 							role: string;
-							content: string;
+							contentType: 'text' | 'file';
+							content?: string;
+							fileContent?: string;
 						}>;
 
-						messages = messagesUi.map(msg => ({
-							role: msg.role as Role,
-							content: msg.content,
+						messages = await Promise.all(messagesUi.map(async (msg) => {
+							if (msg.contentType === 'file') {
+								const item = items[i];
+								if (!msg.fileContent) {
+									throw new NodeOperationError(this.getNode(), 'Input binary field not specified');
+								}
+								if (!item.binary?.[msg.fileContent]) {
+									throw new NodeOperationError(this.getNode(), `Binary field "${msg.fileContent}" not found in input`);
+								}
+
+								const binaryData = item.binary[msg.fileContent];
+								const buffer = await this.helpers.getBinaryDataBuffer(i, msg.fileContent);
+								const fileOptions = (msg as any).fileOptions || {};
+								
+								// Determine if we should treat this as an image
+								const isImage = fileOptions.forceImageType || 
+									(!fileOptions.forceFileType && binaryData.mimeType.startsWith('image/'));
+
+								const content: ContentPart[] = [
+									{
+										type: 'text',
+										text: msg.content || 'Please analyze this file.',
+									},
+									isImage
+										? {
+												type: 'image',
+												image: buffer,
+										  }
+										: {
+												type: 'file',
+												data: buffer,
+												mimeType: binaryData.mimeType,
+										  },
+								];
+
+								return {
+									role: msg.role as Role,
+									content,
+									id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+								};
+							}
+
+							return {
+								role: msg.role as Role,
+								content: msg.content || '',
+								id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+							};
 						}));
 					}
 
@@ -468,7 +614,7 @@ export class GoogleGenerativeAI implements INodeType {
 							safetySettings: safetySettings,
 							useSearchGrounding: useSearchGrounding,
 						}),
-						messages,
+						messages: messages as AIMessage[],
 						maxTokens: options.maxTokens,
 						temperature: options.temperature,
 					});
