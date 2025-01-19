@@ -6,6 +6,8 @@ import {
 	NodeConnectionType,
 	NodeOperationError,
 	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodePropertyOptions,
 } from 'n8n-workflow';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
@@ -79,21 +81,10 @@ export class GoogleGenerativeAI implements INodeType {
 				displayName: 'Model',
 				name: 'model',
 				type: 'options',
-				options: [
-					{
-						name: 'Gemini 1.5 Pro',
-						value: 'gemini-1.5-pro-latest',
-					},
-					{
-						name: 'Gemini 1.5 Pro Vision',
-						value: 'gemini-1.5-pro-vision-latest',
-					},
-					{
-						name: 'Gemini 1.5 Flash',
-						value: 'gemini-1.5-flash-latest',
-					},
-				],
-				default: 'gemini-1.5-pro-latest',
+				typeOptions: {
+					loadOptionsMethod: 'getModels',
+				},
+				default: 'gemini-1.5-falsh',
 				description: 'The Google Generative AI model to use',
 			},
 			{
@@ -268,6 +259,65 @@ export class GoogleGenerativeAI implements INodeType {
 				description: 'Whether to use search grounding for current information',
 			},
 		],
+	};
+
+	methods = {
+		loadOptions: {
+			async getModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const credentials = await this.getCredentials('googleGenerativeAIApi');
+
+				try {
+					const response = await this.helpers.request({
+						method: 'GET',
+						url: 'https://generativelanguage.googleapis.com/v1beta/models',
+						headers: {
+							'x-goog-api-key': credentials.apiKey as string,
+						},
+						json: true,
+					});
+
+					const returnData: INodePropertyOptions[] = [];
+
+					if (response.models) {
+						for (const model of response.models) {
+							if (model.name.includes('gemini')) {
+								const modelId = model.name.split('/').pop() as string;
+								const displayName = model.displayName || modelId;
+								const version = modelId.includes('latest') ? '(Latest)' : `(${model.version || 'v1'})`;
+								
+								returnData.push({
+									name: `${displayName} ${version}`,
+									value: modelId,
+									description: model.description || '',
+								});
+							}
+						}
+					}
+
+					return returnData.sort((a, b) => a.name.localeCompare(b.name));
+
+				} catch (error) {
+					// If API call fails, return default models
+					return [
+						{
+							name: 'Gemini 1.5 Pro (Latest)',
+							value: 'gemini-1.5-pro-latest',
+							description: 'Most capable Gemini model for text generation',
+						},
+						{
+							name: 'Gemini 1.5 Pro Vision (Latest)',
+							value: 'gemini-1.5-pro-vision-latest',
+							description: 'Most capable Gemini model for text and vision tasks',
+						},
+						{
+							name: 'Gemini 1.5 Flash (Latest)',
+							value: 'gemini-1.5-flash-latest',
+							description: 'Optimized for speed while maintaining high quality',
+						},
+					].sort((a, b) => a.name.localeCompare(b.name));
+				}
+			},
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
