@@ -314,7 +314,44 @@ export class GoogleGenerativeAI implements INodeType {
 						temperature: options.temperature,
 					});
 
-					response = { text: result.text };
+					response = {
+						// Main output
+						text: result.text,
+						
+						// Tool-related information
+						toolCalls: result.toolCalls || [],
+						toolResults: result.toolResults || [],
+						
+						// Completion information
+						finishReason: result.finishReason,
+						
+						// Token usage
+						usage: {
+							promptTokens: result.usage?.promptTokens,
+							completionTokens: result.usage?.completionTokens,
+							totalTokens: result.usage?.totalTokens,
+						},
+						
+						// Request/Response metadata
+						request: {
+							body: result.request?.body,
+						},
+						response: {
+							id: result.response?.id,
+							modelId: result.response?.modelId,
+							timestamp: result.response?.timestamp,
+							headers: result.response?.headers,
+						},
+						
+						// Steps
+						steps: result.steps || [],
+						
+						// Warnings
+						warnings: result.warnings || [],
+						
+						// Provider-specific metadata
+						experimental_providerMetadata: result.experimental_providerMetadata,
+					};
 
 					// Add metadata if using search grounding
 					if (useSearchGrounding) {
@@ -345,7 +382,44 @@ export class GoogleGenerativeAI implements INodeType {
 						temperature: options.temperature,
 					});
 
-					response = { text: result.text };
+					response = {
+						// Main output
+						text: result.text,
+						
+						// Tool-related information
+						toolCalls: result.toolCalls || [],
+						toolResults: result.toolResults || [],
+						
+						// Completion information
+						finishReason: result.finishReason,
+						
+						// Token usage
+						usage: {
+							promptTokens: result.usage?.promptTokens,
+							completionTokens: result.usage?.completionTokens,
+							totalTokens: result.usage?.totalTokens,
+						},
+						
+						// Request/Response metadata
+						request: {
+							body: result.request?.body,
+						},
+						response: {
+							id: result.response?.id,
+							modelId: result.response?.modelId,
+							timestamp: result.response?.timestamp,
+							headers: result.response?.headers,
+						},
+						
+						// Steps
+						steps: result.steps || [],
+						
+						// Warnings
+						warnings: result.warnings || [],
+						
+						// Provider-specific metadata
+						experimental_providerMetadata: result.experimental_providerMetadata,
+					};
 
 					// Add metadata if using search grounding
 					if (useSearchGrounding) {
