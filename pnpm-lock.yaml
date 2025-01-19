@@ -23,6 +23,9 @@ importers:
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
+      zod:
+        specifier: ^3.24.1
+        version: 3.24.1
     devDependencies:
       '@types/express':
         specifier: ^5.0.0
