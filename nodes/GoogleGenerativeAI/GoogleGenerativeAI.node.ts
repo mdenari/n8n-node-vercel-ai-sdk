@@ -10,8 +10,9 @@ import {
 	type INodePropertyOptions,
 } from 'n8n-workflow';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateText, generateObject, type Message as AIMessage } from 'ai';
+import { generateText, generateObject, type Message as AIMessage, jsonSchema } from 'ai';
 import type { GoogleGenerativeAIProviderMetadata } from '@ai-sdk/google';
+import Ajv from 'ajv';
 
 type Role = 'system' | 'user' | 'assistant';
 
@@ -439,7 +440,7 @@ export class GoogleGenerativeAI implements INodeType {
 								const modelId = model.name.split('/').pop() as string;
 								const displayName = model.displayName || modelId;
 								const version = modelId.includes('latest') ? '(Latest)' : `(${model.version || 'v1'})`;
-								
+
 								returnData.push({
 									name: `${displayName} ${version}`,
 									value: modelId,
@@ -585,8 +586,8 @@ export class GoogleGenerativeAI implements INodeType {
 								const binaryData = item.binary[msg.fileContent];
 								const buffer = await this.helpers.getBinaryDataBuffer(i, msg.fileContent);
 								const fileOptions = (msg as any).fileOptions || {};
-								
-								const isImage = fileOptions.forceImageType || 
+
+								const isImage = fileOptions.forceImageType ||
 									(!fileOptions.forceFileType && binaryData.mimeType.startsWith('image/'));
 
 								const content: ContentPart[] = [
@@ -596,14 +597,14 @@ export class GoogleGenerativeAI implements INodeType {
 									},
 									isImage
 										? {
-												type: 'image',
-												image: buffer,
-										  }
+											type: 'image',
+											image: buffer,
+										}
 										: {
-												type: 'file',
-												data: buffer,
-												mimeType: binaryData.mimeType,
-										  },
+											type: 'file',
+											data: buffer,
+											mimeType: binaryData.mimeType,
+										},
 								];
 
 								return {
@@ -666,15 +667,36 @@ export class GoogleGenerativeAI implements INodeType {
 					}
 				} else if (operation === 'generateObject') {
 					const prompt = this.getNodeParameter('prompt', i) as string;
-					const schema = JSON.parse(this.getNodeParameter('schema', i) as string);
+					const schemaInput = this.getNodeParameter('schema', i) as string;
+					let schema;
+					try {
+						schema = JSON.parse(schemaInput);
+						const ajv = new Ajv();
+
+						// First validate that the schema itself is valid
+						const validateSchema = ajv.validateSchema(schema);
+						if (!validateSchema) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Invalid JSON Schema: ${ajv.errorsText(ajv.errors)}`,
+							);
+						}
+
+					} catch (error) {
+						if (error instanceof NodeOperationError) {
+							throw error;
+						}
+						throw new NodeOperationError(this.getNode(), `Schema parsing error: ${error.message}`);
+					}
 
 					const result = await generateObject({
 						model: googleProvider(model, {
 							safetySettings: safetySettings,
 							useSearchGrounding: useSearchGrounding,
+							structuredOutputs: true,
 						}),
 						prompt,
-						schema,
+						schema: jsonSchema(schema),
 					});
 
 					response = {
