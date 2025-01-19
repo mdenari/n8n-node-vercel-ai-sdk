@@ -84,7 +84,7 @@ export class GoogleGenerativeAI implements INodeType {
 				typeOptions: {
 					loadOptionsMethod: 'getModels',
 				},
-				default: 'gemini-1.5-falsh',
+				default: 'gemini-2.0-falsh-exp',
 				description: 'The Google Generative AI model to use',
 			},
 			{
