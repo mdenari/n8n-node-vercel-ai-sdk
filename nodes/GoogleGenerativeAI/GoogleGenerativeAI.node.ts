@@ -365,17 +365,74 @@ export class GoogleGenerativeAI implements INodeType {
 								},
 								requiresDataPath: 'single',
 							},
+							// MIME type selection
 							{
 								displayName: 'MIME Type',
 								name: 'mimeType',
-								type: 'string',
-								default: '',
+								type: 'options',
+								default: 'application/octet-stream',
 								description:
-									'Optional override for the file’s MIME type, e.g. "application/pdf"',
+									'Select the MIME type of the file; choose Other to specify a custom MIME type',
+								options: [
+									{
+										name: 'Octet Stream (Default)',
+										value: 'application/octet-stream',
+									},
+									{
+										name: 'PDF (application/pdf)',
+										value: 'application/pdf',
+									},
+									{
+										name: 'Plain Text (text/plain)',
+										value: 'text/plain',
+									},
+									{
+										name: 'JPEG Image (image/jpeg)',
+										value: 'image/jpeg',
+									},
+									{
+										name: 'PNG Image (image/png)',
+										value: 'image/png',
+									},
+									{
+										name: 'JSON (application/json)',
+										value: 'application/json',
+									},
+									{
+										name: 'MP3 Audio (audio/mpeg)',
+										value: 'audio/mpeg',
+									},
+									{
+										name: 'WAV Audio (audio/wav)',
+										value: 'audio/wav',
+									},
+									{
+										name: 'MP4 Video (video/mp4)',
+										value: 'video/mp4',
+									},
+									{
+										name: 'Other (Specify Below)',
+										value: 'other',
+									},
+								],
 								displayOptions: {
 									show: {
 										role: ['assistant', 'user'],
 										contentType: ['file'],
+									},
+								},
+							},
+							{
+								displayName: 'Other MIME Type',
+								name: 'mimeTypeOther',
+								type: 'string',
+								default: '',
+								description: 'Specify a custom MIME type, e.g. application/x-zip-compressed',
+								displayOptions: {
+									show: {
+										role: ['assistant', 'user'],
+										contentType: ['file'],
+										mimeType: ['other'],
 									},
 								},
 							},
@@ -584,7 +641,8 @@ export class GoogleGenerativeAI implements INodeType {
 						}
 					}
 
-					return returnData.sort((a, b) => a.name.localeCompare(b.name));
+					returnData.sort((a, b) => a.name.localeCompare(b.name));
+					return returnData;
 				} catch (error) {
 					// If API call fails, return a fallback list
 					return [
@@ -804,14 +862,10 @@ export class GoogleGenerativeAI implements INodeType {
 							);
 						}
 
-						// If content is a string, we assume a single text piece
-						messages = parsedMessagesJson.data.map((m) => {
-							// If the user gave content as a string or array, pass it through.
-							return {
-								role: m.role,
-								content: m.content,
-							};
-						});
+						messages = parsedMessagesJson.data.map((m) => ({
+							role: m.role,
+							content: m.content,
+						}));
 					} else {
 						// Parse from the UI-based collection
 						const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
@@ -821,11 +875,11 @@ export class GoogleGenerativeAI implements INodeType {
 							fileDataSource?: 'binary' | 'url';
 							fileContent?: string;
 							fileUrl?: string;
-							mimeType?: string;
+							mimeType?: string; // Could be 'other' or a known type
+							mimeTypeOther?: string; // If user picks 'other'
 							content?: string;
 						}>;
 
-						// @ts-expect-error
 						messages = messagesUi.map((m) => {
 							const role = m.role as 'system' | 'assistant' | 'user';
 
@@ -846,12 +900,11 @@ export class GoogleGenerativeAI implements INodeType {
 								// single text part
 								return {
 									role,
-									// For text, we can just store a string or an array with a single text part
 									content: m.content || '',
 								};
 							} else {
 								// contentType === 'file'
-								// We'll build an array of parts. Possibly an additional text part + a file part.
+								// We'll build an array of parts: optional text part + a file part
 								const parts: Array<Record<string, any>> = [];
 
 								if (m.content) {
@@ -862,10 +915,10 @@ export class GoogleGenerativeAI implements INodeType {
 									});
 								}
 
-								let mimeType = m.mimeType || '';
-								if (!mimeType) {
-									// fallback if none is provided
-									mimeType = 'application/octet-stream';
+								// Determine final MIME type from the dropdown or "Other"
+								let selectedMimeType = m.mimeType || 'application/octet-stream';
+								if (selectedMimeType === 'other' && m.mimeTypeOther) {
+									selectedMimeType = m.mimeTypeOther;
 								}
 
 								if (m.fileDataSource === 'url') {
@@ -873,7 +926,7 @@ export class GoogleGenerativeAI implements INodeType {
 									parts.push({
 										type: 'file',
 										data: m.fileUrl, // The AI SDK will fetch if this is an http(s) string
-										mimeType,
+										mimeType: selectedMimeType,
 									});
 								} else {
 									// fileDataSource === 'binary'
@@ -892,16 +945,18 @@ export class GoogleGenerativeAI implements INodeType {
 										binaryData.data ? 'base64' : undefined,
 									);
 
-									// If the user didn't specify a MIME type, attempt to use the binary data’s
-									if (m.mimeType === '') {
-										mimeType =
-											binaryData.mimeType || 'application/octet-stream';
+									// If user had not picked a known MIME type, or "Default", we fallback:
+									if (
+										selectedMimeType === 'application/octet-stream' &&
+										binaryData.mimeType
+									) {
+										selectedMimeType = binaryData.mimeType;
 									}
 
 									parts.push({
 										type: 'file',
 										data: buffer,
-										mimeType,
+										mimeType: selectedMimeType,
 									});
 								}
 
