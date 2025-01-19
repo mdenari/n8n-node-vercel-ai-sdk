@@ -115,6 +115,7 @@ export class GoogleGenerativeAI implements INodeType {
 				displayOptions: {
 					show: {
 						operation: ['chat'],
+						jsonParameters: [false],
 					},
 				},
 				description: 'The messages for the conversation',
@@ -157,6 +158,36 @@ export class GoogleGenerativeAI implements INodeType {
 						],
 					},
 				],
+			},
+			{
+				displayName: 'JSON Parameters',
+				name: 'jsonParameters',
+				type: 'boolean',
+				default: false,
+				displayOptions: {
+					show: {
+						operation: ['chat'],
+					},
+				},
+				description: 'Whether to pass the messages as JSON object',
+			},
+			{
+				displayName: 'Messages (JSON)',
+				name: 'messagesJson',
+				type: 'string',
+				displayOptions: {
+					show: {
+						operation: ['chat'],
+						jsonParameters: [true],
+					},
+				},
+				default: '=[{"role": "user", "content": "Hello!"}]',
+				description: 'Messages array as JSON string or expression. Must be an array of objects with role and content properties.',
+				required: true,
+				typeOptions: {
+					rows: 4,
+				},
+				noDataExpression: false,
 			},
 			{
 				displayName: 'Options',
@@ -414,15 +445,23 @@ export class GoogleGenerativeAI implements INodeType {
 						}
 					}
 				} else if (operation === 'chat') {
-					const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
-						role: string;
-						content: string;
-					}>;
+					const jsonParameters = this.getNodeParameter('jsonParameters', i) as boolean;
+					let messages: ChatMessage[];
 
-					const messages: ChatMessage[] = messagesUi.map(msg => ({
-						role: msg.role as Role,
-						content: msg.content,
-					}));
+					if (jsonParameters) {
+						const messagesJson = this.getNodeParameter('messagesJson', i) as string;
+						messages = JSON.parse(messagesJson);
+					} else {
+						const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
+							role: string;
+							content: string;
+						}>;
+
+						messages = messagesUi.map(msg => ({
+							role: msg.role as Role,
+							content: msg.content,
+						}));
+					}
 
 					const result = await generateText({
 						model: googleProvider(model, {
