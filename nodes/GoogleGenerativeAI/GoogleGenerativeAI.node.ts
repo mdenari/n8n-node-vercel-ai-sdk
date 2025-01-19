@@ -266,7 +266,7 @@ function formatObjectResult(
 /**
  * Main node class
  */
-export class GoogleGenerativeAI implements INodeType {
+export class GoogleGenerativeAi implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Generative AI',
 		name: 'googleGenerativeAi',
