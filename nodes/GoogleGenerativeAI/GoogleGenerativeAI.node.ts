@@ -83,16 +83,10 @@ export class GoogleGenerativeAI implements INodeType {
 				noDataExpression: true,
 				options: [
 					{
-						name: 'Complete',
-						value: 'complete',
-						description: 'Generate a completion',
-						action: 'Generate a completion',
-					},
-					{
-						name: 'Chat',
-						value: 'chat',
-						description: 'Have a chat conversation',
-						action: 'Have a chat conversation',
+						name: 'Generate Text',
+						value: 'generateText',
+						description: 'Generate text using simple prompt or chat messages',
+						action: 'Generate text using simple prompt or chat messages',
 					},
 					{
 						name: 'Generate Object',
@@ -101,17 +95,26 @@ export class GoogleGenerativeAI implements INodeType {
 						action: 'Generate a structured object',
 					},
 				],
-				default: 'complete',
+				default: 'generateText',
 			},
 			{
-				displayName: 'Model',
-				name: 'model',
+				displayName: 'Input Type',
+				name: 'inputType',
 				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getModels',
-				},
-				default: 'gemini-2.0-flash-exp',
-				description: 'The Google Generative AI model to use',
+				options: [
+					{
+						name: 'Simple Prompt',
+						value: 'prompt',
+						description: 'Use a single prompt',
+					},
+					{
+						name: 'Messages',
+						value: 'messages',
+						description: 'Use a conversation with multiple messages',
+					},
+				],
+				default: 'prompt',
+				description: 'Whether to use a simple prompt or a conversation with multiple messages',
 			},
 			{
 				displayName: 'Prompt',
@@ -122,7 +125,7 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 				displayOptions: {
 					show: {
-						operation: ['complete', 'generateObject'],
+						inputType: ['prompt'],
 					},
 				},
 				default: '',
@@ -133,7 +136,7 @@ export class GoogleGenerativeAI implements INodeType {
 				displayName: 'Schema Name',
 				name: 'schemaName',
 				type: 'string',
-				default: 'my_schema',
+				default: undefined,
 				description: 'Optional name of the output that should be generated. Used by some providers for additional LLM guidance, e.g. via tool or schema name.',
 				hint: 'This is used by some providers for additional LLM guidance, e.g. via tool or schema name.',
 				displayOptions: {
@@ -147,7 +150,7 @@ export class GoogleGenerativeAI implements INodeType {
 				displayName: 'Schema Description',
 				name: 'schemaDescription',
 				type: 'string',
-				default: 'This is a schema for a JSON object',
+				default: undefined,
 				description: 'Optional description of the output that should be generated. Used by some providers for additional LLM guidance, e.g. via tool or schema name. ',
 				hint: 'This is used by some providers for additional LLM guidance, e.g. via tool or schema name. ',
 				displayOptions: {
@@ -166,7 +169,7 @@ export class GoogleGenerativeAI implements INodeType {
 						operation: ['generateObject'],
 					},
 				},
-				default: '{}',
+				default: `{"type":"object","properties":{"sentiment":{"type":"string","enum":["positive","negative","neutral"],"description":"The overall sentiment of the text"},"score":{"type":"number","minimum":-1,"maximum":1,"description":"Sentiment score from -1 (most negative) to 1 (most positive)"},"text":{"type":"string","description":"The analyzed text content"}}}`,
 				required: true,
 				description: 'The JSON schema for the object to generate',
 			},
@@ -181,7 +184,7 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 				displayOptions: {
 					show: {
-						operation: ['chat'],
+						inputType: ['messages'],
 						jsonParameters: [false],
 					},
 				},
@@ -310,7 +313,8 @@ export class GoogleGenerativeAI implements INodeType {
 				default: false,
 				displayOptions: {
 					show: {
-						operation: ['chat'],
+						operation: ['generateText', 'generateObject'],
+						inputType: ['messages'],
 					},
 				},
 				description: 'Whether to pass the messages as JSON object',
@@ -321,7 +325,7 @@ export class GoogleGenerativeAI implements INodeType {
 				type: 'string',
 				displayOptions: {
 					show: {
-						operation: ['chat'],
+						operation: ['generateText', 'generateObject'],
 						jsonParameters: [true],
 					},
 				},
@@ -513,6 +517,12 @@ export class GoogleGenerativeAI implements INodeType {
 			try {
 				const operation = this.getNodeParameter('operation', i) as string;
 				const model = this.getNodeParameter('model', i) as string;
+
+				// Add debug logging
+				console.log('Operation:', operation);
+				console.log('Model:', model);
+				console.log('Credentials:', !!this.getCredentials('googleGenerativeAIApi'));
+
 				const options = this.getNodeParameter('options', i, {}) as {
 					maxTokens?: number;
 					temperature?: number;
@@ -526,254 +536,296 @@ export class GoogleGenerativeAI implements INodeType {
 				const useSearchGrounding = this.getNodeParameter('useSearchGrounding', i, false) as boolean;
 
 				const credentials = await this.getCredentials('googleGenerativeAIApi');
-				const googleProvider = createGoogleGenerativeAI({
-					apiKey: credentials.apiKey as string,
-					baseURL: 'https://generativelanguage.googleapis.com/v1beta',
-					headers: {
-						'x-goog-api-key': credentials.apiKey as string,
-					},
-				});
-
-				let response: IDataObject = {};
-
-				if (operation === 'complete') {
-					const prompt = this.getNodeParameter('prompt', i) as string;
-					const messages: Message[] = [{ role: 'user', content: prompt, id: `msg_${Date.now()}` }];
-
-					const result = await generateText({
-						model: googleProvider(model, {
-							safetySettings: safetySettings,
-							useSearchGrounding: useSearchGrounding,
-						}),
-						messages: messages as AIMessage[],
-						maxTokens: options.maxTokens,
-						temperature: options.temperature,
-					});
-
-					response = {
-						text: result.text,
-						toolCalls: result.toolCalls || [],
-						toolResults: result.toolResults || [],
-						finishReason: result.finishReason,
-						usage: {
-							promptTokens: result.usage?.promptTokens,
-							completionTokens: result.usage?.completionTokens,
-							totalTokens: result.usage?.totalTokens,
-						},
-						...(options.includeRequestBody && {
-							request: {
-								body: result.request?.body,
-							},
-						}),
-						response: {
-							id: result.response?.id,
-							modelId: result.response?.modelId,
-							timestamp: result.response?.timestamp,
-							headers: result.response?.headers,
-						},
-						steps: result.steps || [],
-						warnings: result.warnings || [],
-						experimental_providerMetadata: result.experimental_providerMetadata,
-					};
-
-					if (useSearchGrounding) {
-						const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
-						if (metadata) {
-							response.groundingMetadata = metadata.groundingMetadata;
-							response.safetyRatings = metadata.safetyRatings;
-						}
-					}
-				} else if (operation === 'chat') {
-					const jsonParameters = this.getNodeParameter('jsonParameters', i) as boolean;
-					let messages: Message[];
-
-					if (jsonParameters) {
-						const messagesJson = this.getNodeParameter('messagesJson', i) as string;
-						const parsedMessages = JSON.parse(messagesJson);
-						messages = parsedMessages.map((msg: any) => ({
-							...msg,
-							id: msg.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-						}));
-					} else {
-						const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
-							role: string;
-							contentType: 'text' | 'file';
-							content?: string;
-							fileContent?: string;
-						}>;
-
-						messages = await Promise.all(messagesUi.map(async (msg) => {
-							if (msg.contentType === 'file') {
-								const item = items[i];
-								if (!msg.fileContent) {
-									throw new NodeOperationError(this.getNode(), 'Input binary field not specified');
-								}
-								if (!item.binary?.[msg.fileContent]) {
-									throw new NodeOperationError(this.getNode(), `Binary field "${msg.fileContent}" not found in input`);
-								}
-
-								const binaryData = item.binary[msg.fileContent];
-								const buffer = await this.helpers.getBinaryDataBuffer(i, msg.fileContent);
-								const fileOptions = (msg as any).fileOptions || {};
-
-								const isImage = fileOptions.forceImageType ||
-									(!fileOptions.forceFileType && binaryData.mimeType.startsWith('image/'));
-
-								const content: ContentPart[] = [
-									{
-										type: 'text',
-										text: msg.content || 'Please analyze this file.',
-									},
-									isImage
-										? {
-											type: 'image',
-											image: buffer,
-										}
-										: {
-											type: 'file',
-											data: buffer,
-											mimeType: binaryData.mimeType,
-										},
-								];
-
-								return {
-									role: msg.role as Role,
-									content,
-									id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-								};
-							}
-
-							return {
-								role: msg.role as Role,
-								content: msg.content || '',
-								id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-							};
-						}));
-					}
-
-					const result = await generateText({
-						model: googleProvider(model, {
-							safetySettings: safetySettings,
-							useSearchGrounding: useSearchGrounding,
-						}),
-						messages: messages as AIMessage[],
-						maxTokens: options.maxTokens,
-						temperature: options.temperature,
-					});
-
-					response = {
-						text: result.text,
-						toolCalls: result.toolCalls || [],
-						toolResults: result.toolResults || [],
-						finishReason: result.finishReason,
-						usage: {
-							promptTokens: result.usage?.promptTokens,
-							completionTokens: result.usage?.completionTokens,
-							totalTokens: result.usage?.totalTokens,
-						},
-						...(options.includeRequestBody && {
-							request: {
-								body: result.request?.body,
-							},
-						}),
-						response: {
-							id: result.response?.id,
-							modelId: result.response?.modelId,
-							timestamp: result.response?.timestamp,
-							headers: result.response?.headers,
-						},
-						steps: result.steps || [],
-						warnings: result.warnings || [],
-						experimental_providerMetadata: result.experimental_providerMetadata,
-					};
-
-					if (useSearchGrounding) {
-						const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
-						if (metadata) {
-							response.groundingMetadata = metadata.groundingMetadata;
-							response.safetyRatings = metadata.safetyRatings;
-						}
-					}
-				} else if (operation === 'generateObject') {
-					const prompt = this.getNodeParameter('prompt', i) as string;
-					const schemaInput = this.getNodeParameter('schema', i) as string;
-					const schemaName = this.getNodeParameter('schemaName', i) as string;
-					const schemaDescription = this.getNodeParameter('schemaDescription', i) as string;
-					let schema;
-					try {
-						schema = JSON.parse(schemaInput);
-						const ajv = new Ajv();
-
-						// First validate that the schema itself is valid
-						const validateSchema = ajv.validateSchema(schema);
-						if (!validateSchema) {
-							throw new NodeOperationError(
-								this.getNode(),
-								`Invalid JSON Schema: ${ajv.errorsText(ajv.errors)}`,
-							);
-						}
-
-					} catch (error) {
-						if (error instanceof NodeOperationError) {
-							throw error;
-						}
-						throw new NodeOperationError(this.getNode(), `Schema parsing error: ${error.message}`);
-					}
-
-					const result = await generateObject({
-						model: googleProvider(model, {
-							safetySettings: safetySettings,
-							useSearchGrounding: useSearchGrounding,
-							structuredOutputs: true,
-						}),
-						prompt,
-						schema: jsonSchema(schema),
-						schemaName,
-						schemaDescription,
-					});
-
-					response = {
-						generatedObject: result.object as IDataObject | IDataObject[] | string | number | boolean | null,
-						usage: result.usage,
-						finishReason: result.finishReason,
-						...(options.includeRequestBody && {
-							request: {
-								body: result.request?.body,
-							},
-						}),
-						response: {
-							id: result.response?.id,
-							modelId: result.response?.modelId,
-							timestamp: result.response?.timestamp,
-							headers: result.response?.headers,
-						},
-						experimental_providerMetadata: result.experimental_providerMetadata,
-					};
-
-					if (useSearchGrounding) {
-						const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
-						if (metadata) {
-							response.groundingMetadata = metadata.groundingMetadata;
-							response.safetyRatings = metadata.safetyRatings;
-						}
-					}
+				if (!credentials?.apiKey) {
+					throw new NodeOperationError(this.getNode(), 'No API key provided in credentials');
 				}
 
-				returnData.push({
-					json: response,
-				});
-			} catch (error) {
+				try {
+					const googleProvider = createGoogleGenerativeAI({
+						apiKey: credentials.apiKey as string,
+						baseURL: 'https://generativelanguage.googleapis.com/v1beta',
+						headers: {
+							'x-goog-api-key': credentials.apiKey as string,
+						},
+					});
+
+					let response: IDataObject = {};
+
+					if (operation === 'generateText') {
+						const inputType = this.getNodeParameter('inputType', i) as string;
+						let messages: Message[];
+
+						if (inputType === 'prompt') {
+							const prompt = this.getNodeParameter('prompt', i) as string;
+							messages = [{ role: 'user', content: prompt, id: `msg_${Date.now()}` }];
+						} else {
+							const jsonParameters = this.getNodeParameter('jsonParameters', i) as boolean;
+							if (jsonParameters) {
+								const messagesJson = this.getNodeParameter('messagesJson', i) as string;
+								try {
+									const parsedMessages = JSON.parse(messagesJson);
+									messages = parsedMessages.map((msg: any) => ({
+										...msg,
+										id: msg.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+									}));
+								} catch (error) {
+									throw new NodeOperationError(
+										this.getNode(),
+										`Failed to parse messages JSON: ${error.message}`,
+										{
+											description: 'Please ensure the messages JSON is properly formatted',
+											itemIndex: i,
+										},
+									);
+								}
+							} else {
+								const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
+									role: string;
+									contentType: 'text' | 'file';
+									content?: string;
+									fileContent?: string;
+								}>;
+
+								messages = await Promise.all(messagesUi.map(async (msg) => {
+									if (msg.contentType === 'file') {
+										const item = items[i];
+										if (!msg.fileContent) {
+											throw new NodeOperationError(this.getNode(), 'Input binary field not specified');
+										}
+										if (!item.binary?.[msg.fileContent]) {
+											throw new NodeOperationError(this.getNode(), `Binary field "${msg.fileContent}" not found in input`);
+										}
+
+										const binaryData = item.binary[msg.fileContent];
+										const buffer = await this.helpers.getBinaryDataBuffer(i, msg.fileContent);
+										const fileOptions = (msg as any).fileOptions || {};
+
+										const isImage = fileOptions.forceImageType ||
+											(!fileOptions.forceFileType && binaryData.mimeType.startsWith('image/'));
+
+										const content: ContentPart[] = [
+											{
+												type: 'text',
+												text: msg.content || 'Please analyze this file.',
+											},
+											isImage
+												? {
+													type: 'image',
+													image: buffer,
+												}
+												: {
+													type: 'file',
+													data: buffer,
+													mimeType: binaryData.mimeType,
+												},
+										];
+
+										return {
+											role: msg.role as Role,
+											content,
+											id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+										};
+									}
+
+									return {
+										role: msg.role as Role,
+										content: msg.content || '',
+										id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+									};
+								}));
+							}
+						}
+
+						console.log({ messages });
+
+						const result = await generateText({
+							model: googleProvider(model, {
+								safetySettings: safetySettings,
+								useSearchGrounding: useSearchGrounding,
+							}),
+							messages: messages as AIMessage[],
+							maxTokens: options.maxTokens,
+							temperature: options.temperature,
+						}).catch((error: any) => {
+							console.error('Generate text error details:', {
+								error: error,
+								response: error.response?.data,
+								status: error.response?.status,
+								code: error.code,
+							});
+
+							let errorMessage = 'Text generation failed';
+							let errorDescription = '';
+
+							if (error.response?.data) {
+								const apiError = error.response.data;
+								errorMessage = `API Error: ${apiError.error?.message || 'Unknown API error'}`;
+								errorDescription = `Status: ${error.response.status}\nDetails: ${JSON.stringify(apiError.error?.details || {}, null, 2)}`;
+							} else if (error.code === 'ECONNREFUSED') {
+								errorMessage = 'Failed to connect to Google AI API';
+								errorDescription = 'Please check your internet connection and try again';
+							} else if (error.code === 'ETIMEDOUT') {
+								errorMessage = 'Connection to Google AI API timed out';
+								errorDescription = 'The request took too long to complete. Please try again';
+							} else if (error.message?.includes('api key')) {
+								errorMessage = 'Invalid or missing API key';
+								errorDescription = 'Please check your API key in the credentials';
+							} else {
+								errorDescription = error.stack || error.message;
+							}
+
+							throw new NodeOperationError(
+								this.getNode(),
+								errorMessage,
+								{
+									description: errorDescription,
+									itemIndex: i,
+								},
+							);
+						});
+
+						response = {
+							text: result.text,
+							toolCalls: result.toolCalls || [],
+							toolResults: result.toolResults || [],
+							finishReason: result.finishReason,
+							usage: {
+								promptTokens: result.usage?.promptTokens,
+								completionTokens: result.usage?.completionTokens,
+								totalTokens: result.usage?.totalTokens,
+							},
+							...(options.includeRequestBody && {
+								request: {
+									body: result.request?.body,
+								},
+							}),
+							response: {
+								id: result.response?.id,
+								modelId: result.response?.modelId,
+								timestamp: result.response?.timestamp,
+								headers: result.response?.headers,
+							},
+							steps: result.steps || [],
+							warnings: result.warnings || [],
+							experimental_providerMetadata: result.experimental_providerMetadata,
+						};
+
+						if (useSearchGrounding) {
+							const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
+							if (metadata) {
+								response.groundingMetadata = metadata.groundingMetadata;
+								response.safetyRatings = metadata.safetyRatings;
+							}
+						}
+					} else if (operation === 'generateObject') {
+						const prompt = this.getNodeParameter('prompt', i) as string;
+						const schemaInput = this.getNodeParameter('schema', i) as string;
+						const schemaName = this.getNodeParameter('schemaName', i) as string;
+						const schemaDescription = this.getNodeParameter('schemaDescription', i) as string;
+						let schema;
+						try {
+							schema = JSON.parse(schemaInput);
+							const ajv = new Ajv();
+
+							// First validate that the schema itself is valid
+							const validateSchema = ajv.validateSchema(schema);
+							if (!validateSchema) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Invalid JSON Schema: ${ajv.errorsText(ajv.errors)}`,
+								);
+							}
+
+						} catch (error) {
+							if (error instanceof NodeOperationError) {
+								throw error;
+							}
+							throw new NodeOperationError(this.getNode(), `Schema parsing error: ${error.message}`);
+						}
+
+						const result = await generateObject({
+							model: googleProvider(model, {
+								safetySettings: safetySettings,
+								useSearchGrounding: useSearchGrounding,
+								structuredOutputs: true,
+							}),
+							prompt,
+							schema: jsonSchema(schema),
+							schemaName,
+							schemaDescription,
+						});
+
+						response = {
+							generatedObject: result.object as IDataObject | IDataObject[] | string | number | boolean | null,
+							usage: result.usage,
+							finishReason: result.finishReason,
+							...(options.includeRequestBody && {
+								request: {
+									body: result.request?.body,
+								},
+							}),
+							response: {
+								id: result.response?.id,
+								modelId: result.response?.modelId,
+								timestamp: result.response?.timestamp,
+								headers: result.response?.headers,
+							},
+							experimental_providerMetadata: result.experimental_providerMetadata,
+						};
+
+						if (useSearchGrounding) {
+							const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
+							if (metadata) {
+								response.groundingMetadata = metadata.groundingMetadata;
+								response.safetyRatings = metadata.safetyRatings;
+							}
+						}
+					}
+
+					returnData.push({
+						json: response,
+					});
+				} catch (error: any) {
+					console.error('Provider initialization error:', error);
+
+					let errorMessage = 'Failed to initialize Google AI provider';
+					let errorDescription = '';
+
+					if (error.code === 'ENOTFOUND') {
+						errorMessage = 'Could not reach Google AI API';
+						errorDescription = 'Please check your internet connection and DNS settings';
+					} else if (error.code === 'CERT_HAS_EXPIRED') {
+						errorMessage = 'SSL Certificate error';
+						errorDescription = 'There was a problem with the SSL certificate. Please check your system certificates';
+					} else if (error instanceof NodeOperationError) {
+						// Re-throw NodeOperationError as is
+						throw error;
+					}
+
+					throw new NodeOperationError(
+						this.getNode(),
+						errorMessage,
+						{
+							description: errorDescription || error.stack,
+							itemIndex: i,
+						},
+					);
+				}
+			} catch (error: any) {
 				if (this.continueOnFail()) {
+					const errorDetails = error instanceof NodeOperationError ?
+						{ message: error.message, description: error.description } :
+						{ message: error.message, stack: error.stack };
+
 					returnData.push({
 						json: {
-							error: error.message,
+							error: errorDetails,
+							success: false,
 						},
 					});
 					continue;
 				}
-				throw new NodeOperationError(this.getNode(), error as Error, {
-					itemIndex: i,
-				});
+				throw error;
 			}
 		}
 
