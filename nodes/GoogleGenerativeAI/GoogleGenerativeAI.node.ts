@@ -880,6 +880,7 @@ export class GoogleGenerativeAI implements INodeType {
 							content?: string;
 						}>;
 
+						// @ts-expect-error
 						messages = messagesUi.map((m) => {
 							const role = m.role as 'system' | 'assistant' | 'user';
 
