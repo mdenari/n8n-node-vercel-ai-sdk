@@ -84,7 +84,7 @@ export class GoogleGenerativeAI implements INodeType {
 				typeOptions: {
 					loadOptionsMethod: 'getModels',
 				},
-				default: 'gemini-2.0-falsh-exp',
+				default: 'gemini-2.0-flash-exp',
 				description: 'The Google Generative AI model to use',
 			},
 			{
@@ -94,14 +94,14 @@ export class GoogleGenerativeAI implements INodeType {
 				typeOptions: {
 					rows: 4,
 				},
-				default: '',
 				displayOptions: {
 					show: {
 						operation: ['complete'],
 					},
 				},
-				description: 'The prompt to generate completion for',
+				default: '',
 				required: true,
+				description: 'The prompt to generate completion for',
 			},
 			{
 				displayName: 'Messages',
@@ -110,6 +110,7 @@ export class GoogleGenerativeAI implements INodeType {
 				typeOptions: {
 					multipleValues: true,
 					sortable: true,
+					minValue: 1,
 				},
 				displayOptions: {
 					show: {
@@ -118,6 +119,7 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 				description: 'The messages for the conversation',
 				default: {},
+				required: true,
 				options: [
 					{
 						name: 'messagesUi',
