@@ -14,3 +14,6 @@ function copyIcons() {
 
 	return src(credSource).pipe(dest(credDestination));
 }
+
+exports.build = copyIcons;
+exports['build:icons'] = copyIcons;

@@ -36,8 +36,8 @@ type SafetyThreshold =
 export class GoogleGenerativeAI implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Generative AI',
-		name: 'googleGenerativeAi',
-		icon: 'file:google.svg',
+		name: 'googleGenerativeAI',
+		icon: 'file:icons/GoogleGenerativeAI.svg',
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["model"]}}',
