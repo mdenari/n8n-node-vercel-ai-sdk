@@ -5,8 +5,8 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-export class OpenAICredentialsApi implements ICredentialType {
-	name = 'openAIApi';
+export default class OpenAiApi implements ICredentialType {
+	name = 'openAiApi';
 	displayName = 'OpenAI API';
 	documentationUrl = 'https://platform.openai.com/docs/api-reference';
 	properties: INodeProperties[] = [
@@ -17,7 +17,6 @@ export class OpenAICredentialsApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			required: true,
-			description: 'Your OpenAI API key',
 		},
 	];
 
@@ -25,7 +24,7 @@ export class OpenAICredentialsApi implements ICredentialType {
 		type: 'generic',
 		properties: {
 			headers: {
-				Authorization: '=Bearer {{$credentials.apiKey}}',
+				'Authorization': '=Bearer {{$credentials.apiKey}}',
 			},
 		},
 	};

@@ -1,7 +1,7 @@
 {
-  "name": "n8n-nodes-<...>",
+  "name": "n8n-nodes-vercel-ai-sdk",
   "version": "0.1.0",
-  "description": "",
+  "description": "n8n nodes for Vercel AI SDK integration",
   "keywords": [
     "n8n-community-node-package"
   ],
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/<...>/n8n-nodes-<...>.git"
+    "url": "https://github.com/felixvemmer/n8n-nodes-vercel-ai-sdk.git"
   },
   "engines": {
     "node": ">=18.10",
@@ -36,15 +36,20 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/ExampleCredentialsApi.credentials.js",
-      "dist/credentials/HttpBinApi.credentials.js"
+      "dist/credentials/AnthropicApi.credentials.js",
+      "dist/credentials/OpenAiApi.credentials.js",
+      "dist/credentials/GoogleGenerativeAiApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/ExampleNode/ExampleNode.node.js",
-      "dist/nodes/HttpBin/HttpBin.node.js"
+      "dist/nodes/Anthropic/Anthropic.node.js",
+      "dist/nodes/OpenAI/OpenAI.node.js",
+      "dist/nodes/GoogleGenerativeAI/GoogleGenerativeAI.node.js"
     ]
   },
   "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/luxon": "^3.4.2",
+    "@types/node": "^22.10.7",
     "@typescript-eslint/parser": "^7.15.0",
     "eslint": "^8.56.0",
     "eslint-plugin-n8n-nodes-base": "^1.16.1",

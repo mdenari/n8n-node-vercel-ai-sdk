@@ -5,8 +5,9 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-export class GoogleGenerativeAICredentialsApi implements ICredentialType {
-	name = 'googleGenerativeAIApi';
+// Export as default class
+export default class GoogleGenerativeAiApi implements ICredentialType {
+	name = 'googleGenerativeAiApi';
 	displayName = 'Google Generative AI API';
 	documentationUrl = 'https://ai.google.dev/docs';
 	properties: INodeProperties[] = [
@@ -17,7 +18,6 @@ export class GoogleGenerativeAICredentialsApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			required: true,
-			description: 'Your Google API key for Gemini models',
 		},
 	];
 

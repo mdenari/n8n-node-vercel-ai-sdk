@@ -5,10 +5,10 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-export class AnthropicCredentialsApi implements ICredentialType {
+export default class AnthropicApi implements ICredentialType {
 	name = 'anthropicApi';
 	displayName = 'Anthropic API';
-	documentationUrl = 'https://docs.anthropic.com/claude/reference';
+	documentationUrl = 'https://docs.anthropic.com/claude/reference/getting-started-with-the-api';
 	properties: INodeProperties[] = [
 		{
 			displayName: 'API Key',
@@ -17,7 +17,6 @@ export class AnthropicCredentialsApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			required: true,
-			description: 'Your Anthropic API key',
 		},
 	];
 
@@ -33,9 +32,14 @@ export class AnthropicCredentialsApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: 'https://api.anthropic.com',
-			url: '/v1/models',
-			method: 'GET',
+			baseURL: 'https://api.anthropic.com/v1',
+			url: '/messages',
+			method: 'POST',
+			body: {
+				model: 'claude-3-opus-20240229',
+				max_tokens: 1,
+				messages: [{ role: 'user', content: 'Hi' }],
+			},
 		},
 	};
 } 
