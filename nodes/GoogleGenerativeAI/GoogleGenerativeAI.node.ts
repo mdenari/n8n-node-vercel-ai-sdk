@@ -130,6 +130,34 @@ export class GoogleGenerativeAI implements INodeType {
 				description: 'The prompt to generate completion for',
 			},
 			{
+				displayName: 'Schema Name',
+				name: 'schemaName',
+				type: 'string',
+				default: 'my_schema',
+				description: 'Optional name of the output that should be generated. Used by some providers for additional LLM guidance, e.g. via tool or schema name.',
+				hint: 'This is used by some providers for additional LLM guidance, e.g. via tool or schema name.',
+				displayOptions: {
+					show: {
+						operation: ['generateObject'],
+					},
+				},
+
+			},
+			{
+				displayName: 'Schema Description',
+				name: 'schemaDescription',
+				type: 'string',
+				default: 'This is a schema for a JSON object',
+				description: 'Optional description of the output that should be generated. Used by some providers for additional LLM guidance, e.g. via tool or schema name. ',
+				hint: 'This is used by some providers for additional LLM guidance, e.g. via tool or schema name. ',
+				displayOptions: {
+					show: {
+						operation: ['generateObject'],
+					},
+				},
+				validateType: 'string',
+			},
+			{
 				displayName: 'Schema',
 				name: 'schema',
 				type: 'json',
@@ -414,6 +442,7 @@ export class GoogleGenerativeAI implements INodeType {
 				default: false,
 				description: 'Whether to use search grounding for current information',
 			},
+
 		],
 	};
 
@@ -668,6 +697,8 @@ export class GoogleGenerativeAI implements INodeType {
 				} else if (operation === 'generateObject') {
 					const prompt = this.getNodeParameter('prompt', i) as string;
 					const schemaInput = this.getNodeParameter('schema', i) as string;
+					const schemaName = this.getNodeParameter('schemaName', i) as string;
+					const schemaDescription = this.getNodeParameter('schemaDescription', i) as string;
 					let schema;
 					try {
 						schema = JSON.parse(schemaInput);
@@ -697,6 +728,8 @@ export class GoogleGenerativeAI implements INodeType {
 						}),
 						prompt,
 						schema: jsonSchema(schema),
+						schemaName,
+						schemaDescription,
 					});
 
 					response = {
