@@ -1,14 +1,25 @@
 import {
-	type IExecuteFunctions,
-	type INodeExecutionData,
-	type INodeType,
-	type INodeTypeDescription,
+	IExecuteFunctions,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
 	NodeConnectionType,
-	NodeOperationError, type ILoadOptionsFunctions,
-	type INodePropertyOptions
+	NodeOperationError,
+	ILoadOptionsFunctions,
+	INodePropertyOptions,
 } from 'n8n-workflow';
+
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { CoreAssistantMessage, CoreSystemMessage, CoreTool, CoreToolMessage, CoreUserMessage, generateText, GenerateTextResult } from 'ai';
+import {
+	CoreAssistantMessage,
+	CoreSystemMessage,
+	CoreTool,
+	CoreToolMessage,
+	CoreUserMessage,
+	generateText,
+	GenerateTextResult,
+} from 'ai';
+
 import { z } from 'zod';
 
 export class GoogleGenerativeAI implements INodeType {
@@ -36,37 +47,41 @@ export class GoogleGenerativeAI implements INodeType {
 				displayName: 'Operation',
 				name: 'operation',
 				type: 'options',
+				required: true,
 				noDataExpression: true,
 				options: [
 					{
 						name: 'Generate Text',
 						value: 'generateText',
 						description: 'Generate text using simple prompt or chat messages',
-						action: 'Generate text using simple prompt or chat messages',
+						action: 'Generate text',
 					},
 					{
 						name: 'Generate Object',
 						value: 'generateObject',
-						description: 'Generate a structured object',
-						action: 'Generate a structured object',
+						description: 'Generate a structured object based on a JSON schema',
+						action: 'Generate object',
 					},
 				],
 				default: 'generateText',
+				description: 'Which type of output you want to generate.',
 			},
 			{
 				displayName: 'Model',
 				name: 'model',
 				type: 'options',
+				required: true,
 				typeOptions: {
 					loadOptionsMethod: 'getModels',
 				},
 				default: 'gemini-2.0-flash-exp',
-				description: 'The Google Generative AI model to use',
+				description: 'Select which Google Generative AI model to use.',
 			},
 			{
 				displayName: 'Input Type',
 				name: 'inputType',
 				type: 'options',
+				required: true,
 				options: [
 					{
 						name: 'Simple Prompt',
@@ -80,7 +95,7 @@ export class GoogleGenerativeAI implements INodeType {
 					},
 				],
 				default: 'prompt',
-				description: 'The input prompt to generate the text from.',
+				description: 'Choose how you want to provide input to the model.',
 			},
 			{
 				displayName: 'System',
@@ -95,8 +110,9 @@ export class GoogleGenerativeAI implements INodeType {
 					},
 				},
 				default: 'You are a helpful assistant.',
-				description: 'The system prompt to use that specifies the behavior of the model.',
-				hint: 'The system prompt to use that specifies the behavior of the model.',
+				description: 'System prompt that specifies the model’s behavior.',
+				hint: 'This field is optional, but can help guide the model’s responses.',
+				requiresDataPath: 'single',
 			},
 			{
 				displayName: 'Prompt',
@@ -112,35 +128,35 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 				default: '',
 				required: true,
-				description: 'The prompt to generate completion for',
+				description: 'The single text prompt to generate a completion for.',
+				hint: 'You can drag data from previous nodes here using expressions.',
+				requiresDataPath: 'single',
 			},
 			{
 				displayName: 'Schema Name',
 				name: 'schemaName',
 				type: 'string',
-				default: undefined,
-				description: 'Optional name of the output that should be generated. Used by some providers for additional LLM guidance, e.g. via tool or schema name.',
-				hint: 'This is used by some providers for additional LLM guidance, e.g. via tool or schema name.',
+				default: '',
+				description: 'Name of the output schema (optional).',
+				hint: 'Some providers use this name for additional guidance when generating objects.',
 				displayOptions: {
 					show: {
 						operation: ['generateObject'],
 					},
 				},
-
 			},
 			{
 				displayName: 'Schema Description',
 				name: 'schemaDescription',
 				type: 'string',
-				default: undefined,
-				description: 'Optional description of the output that should be generated. Used by some providers for additional LLM guidance, e.g. via tool or schema name. ',
-				hint: 'This is used by some providers for additional LLM guidance, e.g. via tool or schema name. ',
+				default: '',
+				description: 'Description of the output schema (optional).',
+				hint: 'Some providers use this description for additional guidance when generating objects.',
 				displayOptions: {
 					show: {
 						operation: ['generateObject'],
 					},
 				},
-				validateType: 'string',
 			},
 			{
 				displayName: 'Schema',
@@ -151,9 +167,30 @@ export class GoogleGenerativeAI implements INodeType {
 						operation: ['generateObject'],
 					},
 				},
-				default: `{"type":"object","properties":{"sentiment":{"type":"string","enum":["positive","negative","neutral"],"description":"The overall sentiment of the text"},"score":{"type":"number","minimum":-1,"maximum":1,"description":"Sentiment score from -1 (most negative) to 1 (most positive)"},"text":{"type":"string","description":"The analyzed text content"}}}`,
+				default: `{
+  "type": "object",
+  "properties": {
+    "sentiment": {
+      "type": "string",
+      "enum": ["positive","negative","neutral"],
+      "description": "The overall sentiment of the text"
+    },
+    "score": {
+      "type": "number",
+      "minimum": -1,
+      "maximum": 1,
+      "description": "Sentiment score from -1 (negative) to 1 (positive)"
+    },
+    "text": {
+      "type": "string",
+      "description": "The text content to analyze"
+    }
+  }
+}`,
 				required: true,
-				description: 'The JSON schema for the object to generate',
+				description: 'JSON schema describing the structure and constraints of the object to generate.',
+				hint: 'For example, a schema describing sentiment analysis output.',
+				requiresDataPath: 'single',
 			},
 			{
 				displayName: 'Messages',
@@ -170,20 +207,19 @@ export class GoogleGenerativeAI implements INodeType {
 						messageAsJson: [false],
 					},
 				},
-				description: 'The messages for the conversation',
+				description: 'The messages for the conversation.',
 				default: {
 					messagesUi: [
 						{
 							role: 'system',
-							contentType: 'text',
-							content: 'You are a helpful assistant.',
+							systemContent: 'You are a helpful assistant.', // Matches new key
 						},
 						{
 							role: 'user',
 							contentType: 'text',
 							content: 'How can you help me?',
-						}
-					]
+						},
+					],
 				},
 				required: true,
 				options: [
@@ -212,6 +248,25 @@ export class GoogleGenerativeAI implements INodeType {
 								default: 'user',
 								required: true,
 							},
+							// System content: only visible if role=system
+							{
+								displayName: 'System Content',
+								name: 'systemContent',
+								type: 'string',
+								description: 'The text content if role is System',
+								required: true,
+								typeOptions: {
+									rows: 4,
+								},
+								default: '',
+								displayOptions: {
+									show: {
+										role: ['system'],
+									},
+								},
+								requiresDataPath: 'single',
+							},
+							// Content type: only visible if role=assistant or role=user
 							{
 								displayName: 'Content Type',
 								name: 'contentType',
@@ -224,12 +279,16 @@ export class GoogleGenerativeAI implements INodeType {
 									{
 										name: 'Binary File',
 										value: 'file',
-
 									},
 								],
 								default: 'text',
 								description: 'The type of content to send',
 								required: true,
+								displayOptions: {
+									show: {
+										role: ['assistant', 'user'],
+									},
+								},
 							},
 							{
 								displayName: 'Text Content',
@@ -240,12 +299,14 @@ export class GoogleGenerativeAI implements INodeType {
 								},
 								displayOptions: {
 									show: {
+										role: ['assistant', 'user'],
 										contentType: ['text'],
 									},
 								},
 								default: '',
 								description: 'The text content of the message',
 								required: true,
+								requiresDataPath: 'single',
 							},
 							{
 								displayName: 'Input Binary Field',
@@ -253,6 +314,7 @@ export class GoogleGenerativeAI implements INodeType {
 								type: 'string',
 								displayOptions: {
 									show: {
+										role: ['assistant', 'user'],
 										contentType: ['file'],
 									},
 								},
@@ -269,39 +331,14 @@ export class GoogleGenerativeAI implements INodeType {
 								},
 								displayOptions: {
 									show: {
+										role: ['assistant', 'user'],
 										contentType: ['file'],
 									},
 								},
 								default: 'Please analyze this file.',
 								description: 'Additional text to send with the file',
 								required: true,
-							},
-							{
-								displayName: 'Options',
-								name: 'fileOptions',
-								type: 'collection',
-								displayOptions: {
-									show: {
-										contentType: ['file'],
-									},
-								},
-								default: {},
-								options: [
-									{
-										displayName: 'Force Image Type',
-										name: 'forceImageType',
-										type: 'boolean',
-										default: false,
-										description: 'Whether to force treating the file as an image, even if the MIME type does not indicate an image',
-									},
-									{
-										displayName: 'Force File Type',
-										name: 'forceFileType',
-										type: 'boolean',
-										default: false,
-										description: 'Whether to force treating the file as a regular file, even if the MIME type indicates an image',
-									},
-								],
+								requiresDataPath: 'single',
 							},
 						],
 					},
@@ -312,32 +349,33 @@ export class GoogleGenerativeAI implements INodeType {
 				name: 'messageAsJson',
 				type: 'boolean',
 				default: false,
+				description: 'Toggle to provide the entire message array as a JSON string.',
 				displayOptions: {
 					show: {
 						operation: ['generateText', 'generateObject'],
 						inputType: ['messages'],
 					},
 				},
-				description: 'Whether to pass the messages as JSON object',
 			},
 			{
 				displayName: 'Messages (JSON)',
 				name: 'messagesJson',
 				type: 'string',
-				displayOptions: {
-					show: {
-						operation: ['generateText', 'generateObject'],
-						messageAsJson: [true],
-						inputType: ['messages'],
-					},
-				},
 				default: '=[{"role": "user", "content": "Hello!"}]',
-				description: 'Messages array as JSON string or expression. Must be an array of objects with role and content properties.',
+				description: 'Enter an array of message objects in JSON format (role, content).',
 				required: true,
 				typeOptions: {
 					rows: 4,
 				},
 				noDataExpression: false,
+				requiresDataPath: 'single',
+				displayOptions: {
+					show: {
+						operation: ['generateText', 'generateObject'],
+						inputType: ['messages'],
+						messageAsJson: [true],
+					},
+				},
 			},
 			{
 				displayName: 'Options',
@@ -354,7 +392,7 @@ export class GoogleGenerativeAI implements INodeType {
 							minValue: 1,
 						},
 						default: 2048,
-						description: 'The maximum number of tokens to generate',
+						description: 'The maximum number of tokens to generate.',
 					},
 					{
 						displayName: 'Temperature',
@@ -363,16 +401,17 @@ export class GoogleGenerativeAI implements INodeType {
 						typeOptions: {
 							minValue: 0,
 							maxValue: 2,
+							numberPrecision: 2,
 						},
 						default: 0.7,
-						description: 'The sampling temperature to use',
+						description: 'Higher values produce more random outputs.',
 					},
 					{
 						displayName: 'Include Request Body',
 						name: 'includeRequestBody',
 						type: 'boolean',
 						default: false,
-						description: 'Whether to include the full request body in the response (can be very large with files)',
+						description: 'Whether to include the full request body in the response. Warning: can be large if files are included.',
 					},
 				],
 			},
@@ -440,20 +479,19 @@ export class GoogleGenerativeAI implements INodeType {
 						],
 					},
 				],
+				description: 'Set safety categories and thresholds to block or filter certain outputs.',
 			},
 			{
 				displayName: 'Use Search Grounding',
 				name: 'useSearchGrounding',
 				type: 'boolean',
 				default: false,
-				description: 'Whether to use search grounding for current information',
+				description: 'Enable for real-time or up-to-date information if supported by the model.',
 			},
-
 		],
 	};
 
 	methods = {
-
 		loadOptions: {
 			async getModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const credentials = await this.getCredentials('googleGenerativeAIApi');
@@ -475,7 +513,9 @@ export class GoogleGenerativeAI implements INodeType {
 							if (model.name.includes('gemini')) {
 								const modelId = model.name.split('/').pop() as string;
 								const displayName = model.displayName || modelId;
-								const version = modelId.includes('latest') ? '(Latest)' : `(${model.version || 'v1'})`;
+								const version = modelId.includes('latest')
+									? '(Latest)'
+									: `(${model.version || 'v1'})`;
 
 								returnData.push({
 									name: `${displayName} ${version}`,
@@ -487,9 +527,8 @@ export class GoogleGenerativeAI implements INodeType {
 					}
 
 					return returnData.sort((a, b) => a.name.localeCompare(b.name));
-
 				} catch (error) {
-					// If API call fails, return default models
+					// If API call fails, return a fallback list
 					return [
 						{
 							name: 'Gemini 1.5 Pro (Latest)',
@@ -526,17 +565,20 @@ export class GoogleGenerativeAI implements INodeType {
 			baseURL: 'https://generativelanguage.googleapis.com/v1beta',
 			headers: {
 				'x-goog-api-key': credentials.apiKey as string,
-			}
+			},
 		});
 
 		for (let i = 0; i < items.length; i++) {
-			// Config
-			const parsedOperation = z.enum(['generateText', 'generateObject']).safeParse(this.getNodeParameter('operation', i));
+			const parsedOperation = z
+				.enum(['generateText', 'generateObject'])
+				.safeParse(this.getNodeParameter('operation', i));
 			if (!parsedOperation.success) {
 				throw new NodeOperationError(this.getNode(), parsedOperation.error.message);
 			}
 
-			const parsedInputType = z.enum(['prompt', 'messages']).safeParse(this.getNodeParameter('inputType', i));
+			const parsedInputType = z
+				.enum(['prompt', 'messages'])
+				.safeParse(this.getNodeParameter('inputType', i));
 			if (!parsedInputType.success) {
 				throw new NodeOperationError(this.getNode(), parsedInputType.error.message);
 			}
@@ -546,52 +588,71 @@ export class GoogleGenerativeAI implements INodeType {
 				throw new NodeOperationError(this.getNode(), parsedModel.error.message);
 			}
 
-			const parsedOptions = z.object({
-				maxTokens: z.number().optional(),
-				temperature: z.number().optional(),
-				includeRequestBody: z.boolean().optional(),
-			}).safeParse(this.getNodeParameter('options', i, {}));
-
-
+			const parsedOptions = z
+				.object({
+					maxTokens: z.number().optional(),
+					temperature: z.number().optional(),
+					includeRequestBody: z.boolean().optional(),
+				})
+				.safeParse(this.getNodeParameter('options', i, {}));
 			if (!parsedOptions.success) {
 				throw new NodeOperationError(this.getNode(), parsedOptions.error.message);
 			}
 
-			const parsedSafetySettings = z.array(z.object({
-				category: z.enum(['HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_DANGEROUS_CONTENT', 'HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_UNSPECIFIED', 'HARM_CATEGORY_CIVIC_INTEGRITY']).optional(),
-				threshold: z.enum(['BLOCK_LOW_AND_ABOVE', 'BLOCK_MEDIUM_AND_ABOVE', 'BLOCK_ONLY_HIGH', 'BLOCK_NONE', 'HARM_BLOCK_THRESHOLD_UNSPECIFIED']).optional(),
-			})).safeParse(this.getNodeParameter('safetySettings.settings', i, []));
-
+			const parsedSafetySettings = z
+				.array(
+					z.object({
+						category: z
+							.enum([
+								'HARM_CATEGORY_HATE_SPEECH',
+								'HARM_CATEGORY_DANGEROUS_CONTENT',
+								'HARM_CATEGORY_HARASSMENT',
+								'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+								'HARM_CATEGORY_UNSPECIFIED',
+								'HARM_CATEGORY_CIVIC_INTEGRITY',
+							])
+							.optional(),
+						threshold: z
+							.enum([
+								'BLOCK_LOW_AND_ABOVE',
+								'BLOCK_MEDIUM_AND_ABOVE',
+								'BLOCK_ONLY_HIGH',
+								'BLOCK_NONE',
+								'HARM_BLOCK_THRESHOLD_UNSPECIFIED',
+							])
+							.optional(),
+					}),
+				)
+				.safeParse(this.getNodeParameter('safetySettings.settings', i, []));
 			if (!parsedSafetySettings.success) {
 				throw new NodeOperationError(this.getNode(), parsedSafetySettings.error.message);
 			}
 
-			const useSearchGrounding = z.boolean().safeParse(this.getNodeParameter('useSearchGrounding', i, false));
+			const useSearchGrounding = z
+				.boolean()
+				.safeParse(this.getNodeParameter('useSearchGrounding', i, false));
 			if (!useSearchGrounding.success) {
 				throw new NodeOperationError(this.getNode(), useSearchGrounding.error.message);
 			}
 
-			const extractResponse = (result: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => {
+			/**
+			 * Helper function to wrap the result in n8n’s data structure.
+			 */
+			const extractResponse = (
+				result: GenerateTextResult<Record<string, CoreTool<any, any>>, never>,
+			) => {
 				return {
 					json: {
-						// Main output
+						// The main text
 						text: result.text,
-
-						// Tool-related information
 						toolCalls: result.toolCalls || [],
 						toolResults: result.toolResults || [],
-
-						// Completion information
 						finishReason: result.finishReason,
-
-						// Token usage
 						usage: {
 							promptTokens: result.usage?.promptTokens,
 							completionTokens: result.usage?.completionTokens,
 							totalTokens: result.usage?.totalTokens,
 						},
-
-						// Request/Response metadata
 						...(parsedOptions.data.includeRequestBody && {
 							request: {
 								body: result.request?.body,
@@ -603,135 +664,169 @@ export class GoogleGenerativeAI implements INodeType {
 							timestamp: result.response?.timestamp,
 							headers: result.response?.headers,
 						},
-
-						// Steps
 						steps: result.steps || [],
-
-						// Warnings
 						warnings: result.warnings || [],
-
-						// Provider-specific metadata
 						experimental_providerMetadata: result.experimental_providerMetadata,
 					},
 				};
-			}
+			};
 
+			/**
+			 * Handle "Generate Text"
+			 */
 			if (parsedOperation.data === 'generateText') {
-
 				if (parsedInputType.data === 'prompt') {
-					const parsedPrompt = z.string().safeParse(this.getNodeParameter('prompt', i));
+					const promptVal = this.getNodeParameter('prompt', i) as string;
+					const systemVal = this.getNodeParameter('system', i) as string;
+
+					const parsedPrompt = z.string().safeParse(promptVal);
 					if (!parsedPrompt.success) {
 						throw new NodeOperationError(this.getNode(), parsedPrompt.error.message);
 					}
 
-					const parsedSystem = z.string().safeParse(this.getNodeParameter('system', i));
+					const parsedSystem = z.string().safeParse(systemVal);
 					if (!parsedSystem.success) {
 						throw new NodeOperationError(this.getNode(), parsedSystem.error.message);
 					}
 
 					const result = await generateText({
 						model: googleProvider(parsedModel.data, {
-							...(parsedSafetySettings.data.length > 0 ? {
-								safetySettings: parsedSafetySettings.data.map(setting => ({
-									category: setting.category!,
-									threshold: setting.threshold!
-								}))
-							} : {}),
+							...(parsedSafetySettings.data.length > 0
+								? {
+									safetySettings: parsedSafetySettings.data.map((setting) => ({
+										category: setting.category!,
+										threshold: setting.threshold!,
+									})),
+								}
+								: {}),
 							useSearchGrounding: useSearchGrounding.data,
 						}),
 						prompt: parsedPrompt.data,
 						system: parsedSystem.data,
 						maxTokens: parsedOptions.data.maxTokens,
 						temperature: parsedOptions.data.temperature,
-
 					});
 
 					returnData.push(extractResponse(result));
 				} else if (parsedInputType.data === 'messages') {
+					let messages: Array<
+						CoreSystemMessage | CoreUserMessage | CoreAssistantMessage | CoreToolMessage
+					> | undefined = undefined;
 
-					let messages: Array<CoreSystemMessage | CoreUserMessage | CoreAssistantMessage | CoreToolMessage> | undefined = undefined;
-
-					const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
-						role: string;
-						contentType: string;
-						content: string;
-						fileContent?: string;
-						fileOptions?: {
-							forceImageType?: boolean;
-							forceFileType?: boolean;
-						};
-					}>;
-
-					const parsedMessages = z.array(z.object({
-						role: z.enum(['system', 'user', 'assistant']),
-						contentType: z.enum(['text', 'file']),
-						content: z.string(),
-						fileContent: z.string().optional(),
-						fileOptions: z.object({
-							forceImageType: z.boolean().optional(),
-							forceFileType: z.boolean().optional()
-						}).optional()
-					})).safeParse(messagesUi);
-
-					if (!parsedMessages.success) {
-						throw new NodeOperationError(this.getNode(), parsedMessages.error.message);
-					}
-
-					const parsedMessageAsJson = z.boolean().safeParse(this.getNodeParameter('messageAsJson', i, false));
+					const parsedMessageAsJson = z
+						.boolean()
+						.safeParse(this.getNodeParameter('messageAsJson', i, false));
 					if (!parsedMessageAsJson.success) {
 						throw new NodeOperationError(this.getNode(), parsedMessageAsJson.error.message);
 					}
 
-					const messagesJson = this.getNodeParameter('messagesJson', i, '[]');
-					let parsedJson;
-					try {
-						parsedJson = JSON.parse(messagesJson?.toString() || '[]');
-					} catch (error) {
-						throw new NodeOperationError(this.getNode(), 'Invalid JSON in Messages (JSON) field');
-					}
-
-					const parsedMessagesJson = z.array(z.object({
-						role: z.enum(['system', 'user', 'assistant']),
-						content: z.string(),
-					})).safeParse(parsedJson);
-
-					if (!parsedMessagesJson.success) {
-						throw new NodeOperationError(this.getNode(), 'Invalid message format in Messages (JSON) field. Must be an array of objects with role and content properties.');
-					}
-
 					if (parsedMessageAsJson.data) {
-						messages = parsedMessagesJson.data.map(message => ({
-							role: message.role as 'user' | 'assistant' | 'system',
-							content: message.content || '',
+						// If user opted to provide raw JSON
+						const messagesJsonParam = this.getNodeParameter('messagesJson', i) as string;
+						let parsedJson: unknown;
+						try {
+							parsedJson = JSON.parse(messagesJsonParam?.toString() || '[]');
+						} catch (error) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Invalid JSON in Messages (JSON) field',
+							);
+						}
+
+						const parsedMessagesJson = z
+							.array(
+								z.object({
+									role: z.enum(['system', 'user', 'assistant']),
+									content: z.string(),
+								}),
+							)
+							.safeParse(parsedJson);
+						if (!parsedMessagesJson.success) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Invalid message format in Messages (JSON) field. Must be an array of objects with role and content.',
+							);
+						}
+
+						messages = parsedMessagesJson.data.map((m) => ({
+							role: m.role,
+							content: m.content,
 						}));
 					} else {
-						messages = parsedMessages.data.map(message => ({
-							role: message.role as 'user' | 'assistant' | 'system',
-							content: message.content || '',
-						}));
+						// Parse from the UI-based collection
+						const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
+							role: string;
+							systemContent?: string;
+							contentType?: string;
+							content?: string;
+							fileContent?: string;
+						}>;
+
+						messages = messagesUi.map((m) => {
+							const role = m.role as 'user' | 'assistant' | 'system';
+							if (role === 'system') {
+								// For system messages, we only have systemContent
+								return {
+									role,
+									content: m.systemContent || '',
+								};
+							} else {
+								// For user/assistant, check contentType
+								if (m.contentType === 'text') {
+									return {
+										role,
+										content: m.content || '',
+									};
+								} else {
+									// Binary file scenario
+									// For LLM usage, you might store references or upload
+									// Here, we just put a placeholder text referencing the file
+									const fileField = m.fileContent || 'data';
+									const additionalText = m.content || '';
+									const content = `File field: ${fileField}\nAdditional: ${additionalText}`;
+									return {
+										role,
+										content,
+									};
+								}
+							}
+						});
 					}
 
 					const result = await generateText({
 						model: googleProvider(parsedModel.data, {
-							...(parsedSafetySettings.data.length > 0 ? {
-								safetySettings: parsedSafetySettings.data.map(setting => ({
-									category: setting.category!,
-									threshold: setting.threshold!
-								}))
-							} : {}),
+							...(parsedSafetySettings.data.length > 0
+								? {
+									safetySettings: parsedSafetySettings.data.map((setting) => ({
+										category: setting.category!,
+										threshold: setting.threshold!,
+									})),
+								}
+								: {}),
 							useSearchGrounding: useSearchGrounding.data,
 						}),
 						messages,
 						maxTokens: parsedOptions.data.maxTokens,
 						temperature: parsedOptions.data.temperature,
-
 					});
 
 					returnData.push(extractResponse(result));
 				}
 			}
+
+			/**
+			 * Handle "Generate Object"
+			 * (Fill in your own logic for using the JSON schema if needed)
+			 */
+			if (parsedOperation.data === 'generateObject') {
+				// Example placeholder
+				throw new NodeOperationError(
+					this.getNode(),
+					'Generate Object is not yet implemented in this example.',
+				);
+			}
 		}
 
 		return [returnData];
 	}
-} 
+}
