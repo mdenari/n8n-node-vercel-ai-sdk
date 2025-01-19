@@ -8,7 +8,7 @@ import {
 	type INodePropertyOptions
 } from 'n8n-workflow';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { CoreTool, generateText, GenerateTextResult } from 'ai';
+import { CoreAssistantMessage, CoreSystemMessage, CoreTool, CoreToolMessage, CoreUserMessage, generateText, GenerateTextResult } from 'ai';
 import { z } from 'zod';
 
 export class GoogleGenerativeAI implements INodeType {
@@ -210,6 +210,7 @@ export class GoogleGenerativeAI implements INodeType {
 									},
 								],
 								default: 'user',
+								required: true,
 							},
 							{
 								displayName: 'Content Type',
@@ -228,6 +229,7 @@ export class GoogleGenerativeAI implements INodeType {
 								],
 								default: 'text',
 								description: 'The type of content to send',
+								required: true,
 							},
 							{
 								displayName: 'Text Content',
@@ -243,6 +245,7 @@ export class GoogleGenerativeAI implements INodeType {
 								},
 								default: '',
 								description: 'The text content of the message',
+								required: true,
 							},
 							{
 								displayName: 'Input Binary Field',
@@ -255,6 +258,7 @@ export class GoogleGenerativeAI implements INodeType {
 								},
 								default: 'data',
 								description: 'The name of the input binary field containing the file',
+								required: true,
 							},
 							{
 								displayName: 'Additional Text',
@@ -270,6 +274,7 @@ export class GoogleGenerativeAI implements INodeType {
 								},
 								default: 'Please analyze this file.',
 								description: 'Additional text to send with the file',
+								required: true,
 							},
 							{
 								displayName: 'Options',
@@ -323,6 +328,7 @@ export class GoogleGenerativeAI implements INodeType {
 					show: {
 						operation: ['generateText', 'generateObject'],
 						messageAsJson: [true],
+						inputType: ['messages'],
 					},
 				},
 				default: '=[{"role": "user", "content": "Hello!"}]',
@@ -610,35 +616,119 @@ export class GoogleGenerativeAI implements INodeType {
 				};
 			}
 
-			if (parsedOperation.data === 'generateText' && parsedInputType.data === 'prompt') {
-				const parsedPrompt = z.string().safeParse(this.getNodeParameter('prompt', i));
-				if (!parsedPrompt.success) {
-					throw new NodeOperationError(this.getNode(), parsedPrompt.error.message);
+			if (parsedOperation.data === 'generateText') {
+
+				if (parsedInputType.data === 'prompt') {
+					const parsedPrompt = z.string().safeParse(this.getNodeParameter('prompt', i));
+					if (!parsedPrompt.success) {
+						throw new NodeOperationError(this.getNode(), parsedPrompt.error.message);
+					}
+
+					const parsedSystem = z.string().safeParse(this.getNodeParameter('system', i));
+					if (!parsedSystem.success) {
+						throw new NodeOperationError(this.getNode(), parsedSystem.error.message);
+					}
+
+					const result = await generateText({
+						model: googleProvider(parsedModel.data, {
+							...(parsedSafetySettings.data.length > 0 ? {
+								safetySettings: parsedSafetySettings.data.map(setting => ({
+									category: setting.category!,
+									threshold: setting.threshold!
+								}))
+							} : {}),
+							useSearchGrounding: useSearchGrounding.data,
+						}),
+						prompt: parsedPrompt.data,
+						system: parsedSystem.data,
+						maxTokens: parsedOptions.data.maxTokens,
+						temperature: parsedOptions.data.temperature,
+
+					});
+
+					returnData.push(extractResponse(result));
+				} else if (parsedInputType.data === 'messages') {
+
+					let messages: Array<CoreSystemMessage | CoreUserMessage | CoreAssistantMessage | CoreToolMessage> | undefined = undefined;
+
+					const messagesUi = this.getNodeParameter('messages.messagesUi', i, []) as Array<{
+						role: string;
+						contentType: string;
+						content: string;
+						fileContent?: string;
+						fileOptions?: {
+							forceImageType?: boolean;
+							forceFileType?: boolean;
+						};
+					}>;
+
+					const parsedMessages = z.array(z.object({
+						role: z.enum(['system', 'user', 'assistant']),
+						contentType: z.enum(['text', 'file']),
+						content: z.string(),
+						fileContent: z.string().optional(),
+						fileOptions: z.object({
+							forceImageType: z.boolean().optional(),
+							forceFileType: z.boolean().optional()
+						}).optional()
+					})).safeParse(messagesUi);
+
+					if (!parsedMessages.success) {
+						throw new NodeOperationError(this.getNode(), parsedMessages.error.message);
+					}
+
+					const parsedMessageAsJson = z.boolean().safeParse(this.getNodeParameter('messageAsJson', i, false));
+					if (!parsedMessageAsJson.success) {
+						throw new NodeOperationError(this.getNode(), parsedMessageAsJson.error.message);
+					}
+
+					const messagesJson = this.getNodeParameter('messagesJson', i, '[]');
+					let parsedJson;
+					try {
+						parsedJson = JSON.parse(messagesJson?.toString() || '[]');
+					} catch (error) {
+						throw new NodeOperationError(this.getNode(), 'Invalid JSON in Messages (JSON) field');
+					}
+
+					const parsedMessagesJson = z.array(z.object({
+						role: z.enum(['system', 'user', 'assistant']),
+						content: z.string(),
+					})).safeParse(parsedJson);
+
+					if (!parsedMessagesJson.success) {
+						throw new NodeOperationError(this.getNode(), 'Invalid message format in Messages (JSON) field. Must be an array of objects with role and content properties.');
+					}
+
+					if (parsedMessageAsJson.data) {
+						messages = parsedMessagesJson.data.map(message => ({
+							role: message.role as 'user' | 'assistant' | 'system',
+							content: message.content || '',
+						}));
+					} else {
+						messages = parsedMessages.data.map(message => ({
+							role: message.role as 'user' | 'assistant' | 'system',
+							content: message.content || '',
+						}));
+					}
+
+					const result = await generateText({
+						model: googleProvider(parsedModel.data, {
+							...(parsedSafetySettings.data.length > 0 ? {
+								safetySettings: parsedSafetySettings.data.map(setting => ({
+									category: setting.category!,
+									threshold: setting.threshold!
+								}))
+							} : {}),
+							useSearchGrounding: useSearchGrounding.data,
+						}),
+						messages,
+						maxTokens: parsedOptions.data.maxTokens,
+						temperature: parsedOptions.data.temperature,
+
+					});
+
+					returnData.push(extractResponse(result));
 				}
-
-				const parsedSystem = z.string().safeParse(this.getNodeParameter('system', i));
-				if (!parsedSystem.success) {
-					throw new NodeOperationError(this.getNode(), parsedSystem.error.message);
-				}
-
-				const result = await generateText({
-					model: googleProvider(parsedModel.data, {
-						...(parsedSafetySettings.data.length > 0 ? {
-							safetySettings: parsedSafetySettings.data.map(setting => ({
-								category: setting.category!,
-								threshold: setting.threshold!
-							}))
-						} : {}),
-						useSearchGrounding: useSearchGrounding.data,
-					}),
-					prompt: parsedPrompt.data,
-					system: parsedSystem.data,
-					maxTokens: parsedOptions.data.maxTokens,
-					temperature: parsedOptions.data.temperature,
-
-				});
-
-				returnData.push(extractResponse(result));
 			}
 		}
 
