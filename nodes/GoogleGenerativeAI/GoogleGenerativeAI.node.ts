@@ -928,7 +928,7 @@ export class GoogleGenerativeAI implements INodeType {
 				}));
 
 				// Build model config
-				const modelConfig = {
+				const modelSettings = {
 					structuredOutputs: operation === 'generateObject', // optional
 					safetySettings: safetySettings.length > 0 ? safetySettings : undefined,
 					useSearchGrounding,
@@ -947,7 +947,7 @@ export class GoogleGenerativeAI implements INodeType {
 					if (input.prompt) {
 						// Single prompt
 						result = await generateText({
-							model: googleProvider(model, modelConfig),
+							model: googleProvider(model, modelSettings),
 							prompt: input.prompt,
 							system: input.system,
 							maxTokens: options.maxTokens,
@@ -956,7 +956,7 @@ export class GoogleGenerativeAI implements INodeType {
 					} else {
 						// We have messages
 						result = await generateText({
-							model: googleProvider(model, modelConfig),
+							model: googleProvider(model, modelSettings),
 							messages: input.messages,
 							maxTokens: options.maxTokens,
 							temperature: options.temperature,
@@ -996,7 +996,7 @@ export class GoogleGenerativeAI implements INodeType {
 
 					// Now call generateObject
 					const result = await generateObject({
-						model: googleProvider(model, modelConfig),
+						model: googleProvider(model, modelSettings),
 						schema: jsonSchema(parsedSchema),
 						schemaName,
 						schemaDescription,
