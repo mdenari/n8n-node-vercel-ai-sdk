@@ -39,7 +39,7 @@
       "dist/credentials/GoogleGenerativeAIApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/GoogleGenerativeAI/GoogleGenerativeAI.node.js"
+      "dist/nodes/GoogleGenerativeAi/GoogleGenerativeAi.node.js"
     ]
   },
   "devDependencies": {
