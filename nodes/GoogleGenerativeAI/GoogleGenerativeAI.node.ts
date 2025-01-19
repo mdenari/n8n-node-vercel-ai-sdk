@@ -10,7 +10,7 @@ import {
 	type INodePropertyOptions,
 } from 'n8n-workflow';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateText, type Message as AIMessage } from 'ai';
+import { generateText, generateObject, type Message as AIMessage } from 'ai';
 import type { GoogleGenerativeAIProviderMetadata } from '@ai-sdk/google';
 
 type Role = 'system' | 'user' | 'assistant';
@@ -93,6 +93,12 @@ export class GoogleGenerativeAI implements INodeType {
 						description: 'Have a chat conversation',
 						action: 'Have a chat conversation',
 					},
+					{
+						name: 'Generate Object',
+						value: 'generateObject',
+						description: 'Generate a structured object',
+						action: 'Generate a structured object',
+					},
 				],
 				default: 'complete',
 			},
@@ -115,12 +121,25 @@ export class GoogleGenerativeAI implements INodeType {
 				},
 				displayOptions: {
 					show: {
-						operation: ['complete'],
+						operation: ['complete', 'generateObject'],
 					},
 				},
 				default: '',
 				required: true,
 				description: 'The prompt to generate completion for',
+			},
+			{
+				displayName: 'Schema',
+				name: 'schema',
+				type: 'json',
+				displayOptions: {
+					show: {
+						operation: ['generateObject'],
+					},
+				},
+				default: '{}',
+				required: true,
+				description: 'The JSON schema for the object to generate',
 			},
 			{
 				displayName: 'Messages',
@@ -502,24 +521,15 @@ export class GoogleGenerativeAI implements INodeType {
 					});
 
 					response = {
-						// Main output
 						text: result.text,
-						
-						// Tool-related information
 						toolCalls: result.toolCalls || [],
 						toolResults: result.toolResults || [],
-						
-						// Completion information
 						finishReason: result.finishReason,
-						
-						// Token usage
 						usage: {
 							promptTokens: result.usage?.promptTokens,
 							completionTokens: result.usage?.completionTokens,
 							totalTokens: result.usage?.totalTokens,
 						},
-						
-						// Request/Response metadata
 						...(options.includeRequestBody && {
 							request: {
 								body: result.request?.body,
@@ -531,18 +541,11 @@ export class GoogleGenerativeAI implements INodeType {
 							timestamp: result.response?.timestamp,
 							headers: result.response?.headers,
 						},
-						
-						// Steps
 						steps: result.steps || [],
-						
-						// Warnings
 						warnings: result.warnings || [],
-						
-						// Provider-specific metadata
 						experimental_providerMetadata: result.experimental_providerMetadata,
 					};
 
-					// Add metadata if using search grounding
 					if (useSearchGrounding) {
 						const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
 						if (metadata) {
@@ -583,7 +586,6 @@ export class GoogleGenerativeAI implements INodeType {
 								const buffer = await this.helpers.getBinaryDataBuffer(i, msg.fileContent);
 								const fileOptions = (msg as any).fileOptions || {};
 								
-								// Determine if we should treat this as an image
 								const isImage = fileOptions.forceImageType || 
 									(!fileOptions.forceFileType && binaryData.mimeType.startsWith('image/'));
 
@@ -630,24 +632,15 @@ export class GoogleGenerativeAI implements INodeType {
 					});
 
 					response = {
-						// Main output
 						text: result.text,
-						
-						// Tool-related information
 						toolCalls: result.toolCalls || [],
 						toolResults: result.toolResults || [],
-						
-						// Completion information
 						finishReason: result.finishReason,
-						
-						// Token usage
 						usage: {
 							promptTokens: result.usage?.promptTokens,
 							completionTokens: result.usage?.completionTokens,
 							totalTokens: result.usage?.totalTokens,
 						},
-						
-						// Request/Response metadata
 						...(options.includeRequestBody && {
 							request: {
 								body: result.request?.body,
@@ -659,18 +652,49 @@ export class GoogleGenerativeAI implements INodeType {
 							timestamp: result.response?.timestamp,
 							headers: result.response?.headers,
 						},
-						
-						// Steps
 						steps: result.steps || [],
-						
-						// Warnings
 						warnings: result.warnings || [],
-						
-						// Provider-specific metadata
 						experimental_providerMetadata: result.experimental_providerMetadata,
 					};
 
-					// Add metadata if using search grounding
+					if (useSearchGrounding) {
+						const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
+						if (metadata) {
+							response.groundingMetadata = metadata.groundingMetadata;
+							response.safetyRatings = metadata.safetyRatings;
+						}
+					}
+				} else if (operation === 'generateObject') {
+					const prompt = this.getNodeParameter('prompt', i) as string;
+					const schema = JSON.parse(this.getNodeParameter('schema', i) as string);
+
+					const result = await generateObject({
+						model: googleProvider(model, {
+							safetySettings: safetySettings,
+							useSearchGrounding: useSearchGrounding,
+						}),
+						prompt,
+						schema,
+					});
+
+					response = {
+						generatedObject: result.object as IDataObject | IDataObject[] | string | number | boolean | null,
+						usage: result.usage,
+						finishReason: result.finishReason,
+						...(options.includeRequestBody && {
+							request: {
+								body: result.request?.body,
+							},
+						}),
+						response: {
+							id: result.response?.id,
+							modelId: result.response?.modelId,
+							timestamp: result.response?.timestamp,
+							headers: result.response?.headers,
+						},
+						experimental_providerMetadata: result.experimental_providerMetadata,
+					};
+
 					if (useSearchGrounding) {
 						const metadata = (await result.experimental_providerMetadata)?.google as GoogleGenerativeAIProviderMetadata | undefined;
 						if (metadata) {
