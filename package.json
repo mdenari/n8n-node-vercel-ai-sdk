@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-vercel-ai-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "n8n nodes for Vercel AI SDK integration",
   "keywords": [
     "n8n-community-node-package"
