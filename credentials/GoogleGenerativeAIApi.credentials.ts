@@ -5,9 +5,9 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-// Export as default class
-export default class GoogleGenerativeAiApi implements ICredentialType {
-	name = 'googleGenerativeAiApi';
+// IMPORTANT: Class name must match EXACTLY with both the file name and what's in package.json
+export class GoogleGenerativeAIApi implements ICredentialType {
+	name = 'googleGenerativeAIApi';
 	displayName = 'Google Generative AI API';
 	documentationUrl = 'https://ai.google.dev/docs';
 	properties: INodeProperties[] = [

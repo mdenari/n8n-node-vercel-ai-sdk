@@ -36,13 +36,9 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/AnthropicApi.credentials.js",
-      "dist/credentials/OpenAiApi.credentials.js",
-      "dist/credentials/GoogleGenerativeAiApi.credentials.js"
+      "dist/credentials/GoogleGenerativeAIApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/Anthropic/Anthropic.node.js",
-      "dist/nodes/OpenAI/OpenAI.node.js",
       "dist/nodes/GoogleGenerativeAI/GoogleGenerativeAI.node.js"
     ]
   },
