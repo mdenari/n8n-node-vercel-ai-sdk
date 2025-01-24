@@ -5,6 +5,8 @@ import {
     INodeTypeDescription,
     NodeOperationError,
     IDataObject,
+    ILoadOptionsFunctions,
+    INodePropertyOptions,
 } from 'n8n-workflow';
 
 import { createDeepSeek } from '@ai-sdk/deepseek';
@@ -184,20 +186,11 @@ export class DeepSeek implements INodeType {
                 name: 'model',
                 type: 'options',
                 required: true,
-                options: [
-                    {
-                        name: 'DeepSeek Chat',
-                        value: 'deepseek-chat',
-                        description: 'Chat model optimized for conversations and structured outputs',
-                    },
-                    {
-                        name: 'DeepSeek Reasoner',
-                        value: 'deepseek-reasoner',
-                        description: 'Model optimized for reasoning and problem-solving',
-                    },
-                ],
-                default: 'deepseek-chat',
-                description: 'Select which DeepSeek model to use',
+                typeOptions: {
+                    loadOptionsMethod: 'getModels',
+                },
+                default: '',
+                description: 'Select which DeepSeek model to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
             },
             {
                 displayName: 'Operation',
@@ -514,6 +507,53 @@ export class DeepSeek implements INodeType {
                 ],
             },
         ],
+    };
+
+    methods = {
+        loadOptions: {
+            async getModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+                const credentials = await this.getCredentials('deepSeekApi');
+
+                try {
+                    const response = await this.helpers.request({
+                        method: 'GET',
+                        url: 'https://api.deepseek.com/v1/models/list',
+                        headers: {
+                            Authorization: `Bearer ${credentials.apiKey as string}`,
+                        },
+                        json: true,
+                    });
+
+                    const returnData: INodePropertyOptions[] = [];
+
+                    if (response.data) {
+                        for (const model of response.data) {
+                            returnData.push({
+                                name: model.name,
+                                value: model.id,
+                                description: model.description || '',
+                            });
+                        }
+                    }
+
+                    return returnData.sort((a, b) => a.name.localeCompare(b.name));
+                } catch (error) {
+                    // If API call fails, return a fallback list
+                    return [
+                        {
+                            name: 'DeepSeek Chat',
+                            value: 'deepseek-chat',
+                            description: 'Chat model optimized for conversations and structured outputs',
+                        },
+                        {
+                            name: 'DeepSeek Reasoner',
+                            value: 'deepseek-reasoner',
+                            description: 'Model optimized for reasoning and problem-solving',
+                        },
+                    ].sort((a, b) => a.name.localeCompare(b.name));
+                }
+            },
+        },
     };
 
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
