@@ -50,6 +50,11 @@ Requires n8n version 1.0.0 or later.
 
 ## Version History
 
+### 0.1.4
+- Added DeepSeek AI integration
+- Updated dependencies
+- Minor improvements to Google Generative AI node
+
 ### 0.1.3
 - Enhanced documentation with detailed operation descriptions
 - Added comprehensive installation and credential setup guide
