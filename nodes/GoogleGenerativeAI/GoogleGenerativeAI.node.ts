@@ -319,7 +319,8 @@ export class GoogleGenerativeAi implements INodeType {
 					loadOptionsMethod: 'getModels',
 				},
 				default: '',
-				description: 'Select which Google Generative AI model to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+				description:
+					'Select which Google Generative AI model to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Input Type',
@@ -354,8 +355,8 @@ export class GoogleGenerativeAi implements INodeType {
 					},
 				},
 				default: 'You are a helpful assistant.',
-				description: 'System prompt that specifies the model\'s behavior',
-				hint: 'This field is optional, but can help guide the model\'s responses.',
+				description: "System prompt that specifies the model's behavior",
+				hint: "This field is optional, but can help guide the model's responses.",
 				requiresDataPath: 'single',
 			},
 			{
@@ -713,7 +714,8 @@ export class GoogleGenerativeAi implements INodeType {
 				},
 				default: `{\n\t"type": "object",\n\t"properties": {\n\t\t"sentiment": {\n\t\t"type": "string",\n\t\t"enum": ["positive","negative","neutral"],\n\t\t"description": "The overall sentiment of the text"\n\t\t},\n\t\t"score": {\n\t\t"type": "number",\n\t\t"minimum": -1,\n\t\t"maximum": 1,\n\t\t"description": "Sentiment score from -1 (negative) to 1 (positive)"\n\t\t},\n\t\t"text": {\n\t\t"type": "string",\n\t\t"description": "The text content to analyze"\n\t\t}\n\t}\n}`,
 				required: true,
-				description: 'JSON schema describing the structure and constraints of the object to generate',
+				description:
+					'JSON schema describing the structure and constraints of the object to generate',
 				hint: 'For example, a schema describing sentiment analysis output.',
 				requiresDataPath: 'single',
 			},
@@ -802,7 +804,8 @@ export class GoogleGenerativeAi implements INodeType {
 				name: 'useSearchGrounding',
 				type: 'boolean',
 				default: false,
-				description: 'Whether to enable real-time or up-to-date information if supported by the model',
+				description:
+					'Whether to enable real-time or up-to-date information if supported by the model',
 			},
 		],
 	};
