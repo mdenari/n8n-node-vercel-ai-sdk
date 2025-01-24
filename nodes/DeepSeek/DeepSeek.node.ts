@@ -551,6 +551,7 @@ export class DeepSeek implements INodeType {
                     //  ~~~~~~~~~~~~~
 
                     const result = await generateText({
+                        // @ts-ignore
                         model: deepSeekProvider(model),
                         messages: input.messages,
                         maxTokens: options.maxTokens,
@@ -591,6 +592,7 @@ export class DeepSeek implements INodeType {
 
                     // Now call generateObject
                     const result = await generateObject({
+                        // @ts-ignore
                         model: deepSeekProvider(model),
                         schema: jsonSchema(parsedSchema),
                         schemaName,
