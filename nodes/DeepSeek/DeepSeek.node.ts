@@ -164,7 +164,7 @@ export class DeepSeek implements INodeType {
     description: INodeTypeDescription = {
         displayName: 'DeepSeek',
         name: 'deepSeek',
-        icon: 'file:icons/deepseek.png',
+        icon: 'file:icons/deepseek.svg',
         group: ['transform'],
         version: 1,
         subtitle: '={{$parameter["operation"] + ": " + $parameter["model"]}}',
@@ -182,7 +182,7 @@ export class DeepSeek implements INodeType {
         ],
         properties: [
             {
-                displayName: 'Model',
+                displayName: 'Model Name or ID',
                 name: 'model',
                 type: 'options',
                 required: true,
