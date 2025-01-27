@@ -50,6 +50,11 @@ Requires n8n version 1.0.0 or later.
 
 ## Version History
 
+### 0.1.5
+- Added DeepSeek AI integration reasoning output support & cache token hits:
+  - Reasoning is now shown under `reasoning.output`
+  - Cache metrics are shown under `usage.cache_metrics`
+
 ### 0.1.4
 - Added DeepSeek AI integration
 - Updated dependencies

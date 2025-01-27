@@ -110,11 +110,16 @@ function formatTextResult(
 ): IDataObject {
     const out: IDataObject = {
         text: result.text,
+        reasoning: result?.reasoning,
         finishReason: result.finishReason,
         usage: {
             promptTokens: result.usage?.promptTokens,
             completionTokens: result.usage?.completionTokens,
             totalTokens: result.usage?.totalTokens,
+            cacheMetrics: {
+                promptCacheHitTokens: result.experimental_providerMetadata?.deepseek?.promptCacheHitTokens,
+                promptCacheMissTokens: result.experimental_providerMetadata?.deepseek?.promptCacheMissTokens,
+            },
         } as IDataObject,
         response: {
             id: result.response?.id,
