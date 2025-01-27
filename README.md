@@ -1,6 +1,6 @@
 # n8n-nodes-vercel-ai-sdk
 
-This is an n8n community node. It lets you use Google Generative AI (PaLM 2) in your n8n workflows.
+This is an n8n community node. It lets you use Google Generative AI (PaLM 2), DeepSeek AI, and Groq in your n8n workflows.
 
 Google Generative AI is Google's family of large language models that enables natural language interactions and content generation through an API.
 
@@ -19,8 +19,9 @@ Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes
 
 ## Operations
 
-The Google Generative AI node supports the following operations:
+The following operations are supported:
 
+### Google Generative AI
 - **Generate Text**: Generate text responses using the model
   - Support for both simple prompts and multi-turn conversations
   - Handles text and file inputs
@@ -31,13 +32,24 @@ The Google Generative AI node supports the following operations:
   - Define output structure using JSON schema
   - Get validated, structured responses from the model
 
+### DeepSeek AI
+- Text generation with reasoning output support
+- Structured object generation with schema validation
+- Cache metrics tracking
+
+### Groq
+- High-performance text generation
+- Structured object generation with JSON schema
+- Automatic reasoning extraction from thinking process
+- Token usage and cache metrics tracking
+
 ## Credentials
 
-You need to authenticate with Google Generative AI API:
+You need to authenticate with the respective APIs:
 
-1. Visit the [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Create a new API key
-3. Use this API key in the node credentials
+1. **Google Generative AI**: Get API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. **DeepSeek AI**: Obtain API key from DeepSeek platform
+3. **Groq**: Get API key from Groq platform
 
 ## Compatibility
 
@@ -47,8 +59,17 @@ Requires n8n version 1.0.0 or later.
 
 * [n8n community nodes documentation](https://docs.n8n.io/integrations/community-nodes/)
 * [Google Generative AI Documentation](https://ai.google.dev/docs)
+* [DeepSeek AI Documentation](https://platform.deepseek.com/)
+* [Groq Documentation](https://console.groq.com/docs)
 
 ## Version History
+
+### 0.1.6
+- Added Groq integration:
+  - Support for text generation and object generation
+  - Automatic reasoning extraction from thinking process
+  - Token usage and cache metrics tracking
+  - Support for all Groq models including Mixtral and LLaMA variants
 
 ### 0.1.5
 - Added DeepSeek AI integration reasoning output support & cache token hits:
