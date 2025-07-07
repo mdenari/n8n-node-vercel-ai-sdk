@@ -7,9 +7,6 @@ import {
     IDataObject,
     ILoadOptionsFunctions,
     INodePropertyOptions,
-    NodeConnectionType, // <-- ADICIONE ESTA LINHA
-} from 'n8n-workflow';
-
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import {
     CoreAssistantMessage,
@@ -182,14 +179,14 @@ export class DeepSeek implements INodeType {
             {
                 displayName: 'Main', // Pode ser 'Main' ou 'Input'
                 name: 'main',
-                type: NodeConnectionType.Main,
+                type: 'main',
             },
         ],
         outputs: [
              {
                  displayName: 'Main', // Pode ser 'Main' ou 'Output'
                  name: 'main',
-                 type: NodeConnectionType.Main,
+                 type: 'main',
              },
         ],
        credentials: [
