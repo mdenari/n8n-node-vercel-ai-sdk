@@ -278,18 +278,8 @@ export class GoogleGenerativeAi implements INodeType {
 		defaults: {
 			name: 'Google Generative AI',
 		},
-                inputs: [
-                    {
-                        displayName: 'Input', // ou 'Main'
-                        name: 'main',
-                    },
-                ],
-                outputs: [
-                    {
-                        displayName: 'Output', // ou 'Main'
-                        name: 'main',
-                    },
-                ],
+                inputs: ['main'],
+                outputs: ['main'],
 		credentials: [
 			{
 				name: 'googleGenerativeAIApi',
