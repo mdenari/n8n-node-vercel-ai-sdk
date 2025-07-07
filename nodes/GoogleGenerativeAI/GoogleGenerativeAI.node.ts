@@ -6,9 +6,12 @@ import {
 	NodeOperationError,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
+        NodeConnectionType,
 } from 'n8n-workflow';
-
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+const { createGoogleGenerativeAI } = require('@ai-sdk/google');
+/**
+*import { createGoogleGenerativeAI } from '@ai-sdk/google';
+*/
 import {
 	CoreAssistantMessage,
 	CoreSystemMessage,
@@ -278,8 +281,16 @@ export class GoogleGenerativeAi implements INodeType {
 		defaults: {
 			name: 'Google Generative AI',
 		},
-                inputs: ['main'],
-                outputs: ['main'],
+                        inputs: [
+                            {
+                                type: NodeConnectionType.Main,
+                            },
+                        ],
+                        outputs: [
+                            {
+                                 type: NodeConnectionType.Main,
+                            },
+                        ],
 		credentials: [
 			{
 				name: 'googleGenerativeAIApi',

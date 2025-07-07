@@ -50,13 +50,13 @@
     "@types/express": "^5.0.0",
     "@types/luxon": "^3.4.2",
     "@types/node": "^22.10.7",
-    "@typescript-eslint/parser": "^7.18.0",
-    "eslint": "^9.30.1",
-    "eslint-plugin-n8n-nodes-base": "^1.16.3",
+    "@typescript-eslint/parser": "^7.15.0",
+    "eslint": "^8.56.0",
+    "eslint-plugin-n8n-nodes-base": "^1.16.1",
     "gulp": "^4.0.2",
-    "n8n-workflow": "*",
+    "n8n-workflow": "1.82.0",
     "prettier": "^3.3.2",
-    "typescript": "^5.5.3"
+    "typescript": "^5.8.3"
   },
   "peerDependencies": {
     "n8n-workflow": "1.82.0"
@@ -67,6 +67,7 @@
     "@ai-sdk/google": "^1.1.2",
     "@ai-sdk/groq": "^1.1.4",
     "@ai-sdk/openai": "^1.1.2",
+    "n8n-workflow": "1.82.0",
     "ai": "^4.1.2",
     "ajv": "^8.17.1",
     "zod": "^3.24.1"

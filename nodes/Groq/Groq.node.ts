@@ -7,9 +7,12 @@ import {
     IDataObject,
     ILoadOptionsFunctions,
     INodePropertyOptions,
+    NodeConnectionType,
 } from 'n8n-workflow';
-
-import { createGroq } from '@ai-sdk/groq';
+const { createGroq } = require('createGroq');
+/**
+*import { createGroq } from '@ai-sdk/groq';
+*/
 import {
     CoreAssistantMessage,
     CoreSystemMessage,
@@ -195,9 +198,17 @@ export class Groq implements INodeType {
         defaults: {
             name: 'Groq',
         },
-               inputs: ['main'],
-               outputs: ['main'],      
-            credentials: [
+                        inputs: [
+                            {
+                                type: NodeConnectionType.Main,
+                            },
+                        ],
+                        outputs: [
+                            {
+                                type: NodeConnectionType.Main,
+                            },
+                        ],      
+           credentials: [
             {
                 name: 'groqApi',
                 required: true,

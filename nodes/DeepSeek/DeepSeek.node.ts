@@ -7,6 +7,8 @@ import {
     IDataObject,
     ILoadOptionsFunctions,
     INodePropertyOptions,
+    NodeConnectionType,
+} from 'n8n-workflow';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import {
     CoreAssistantMessage,
@@ -174,22 +176,20 @@ export class DeepSeek implements INodeType {
         description: 'Use DeepSeek models via Vercel AI SDK',
         defaults: {
             name: 'DeepSeek',
-        },
+         },
         inputs: [
-            {
-                displayName: 'Main', // Pode ser 'Main' ou 'Input'
-                name: 'main',
-                type: 'main',
-            },
-        ],
+              {
+                  displayName: 'Main',
+                  type: NodeConnectionType.Main,
+              },
+         ],
         outputs: [
-             {
-                 displayName: 'Main', // Pode ser 'Main' ou 'Output'
-                 name: 'main',
-                 type: 'main',
-             },
+              {
+                  displayName: 'Main',
+                  type: NodeConnectionType.Main,
+              },
         ],
-       credentials: [
+         credentials: [
             {
                 name: 'deepSeekApi',
                 required: true,
