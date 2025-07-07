@@ -282,14 +282,12 @@ export class GoogleGenerativeAi implements INodeType {
                     {
                         displayName: 'Input', // ou 'Main'
                         name: 'main',
-                        type: 'main',
                     },
                 ],
                 outputs: [
                     {
                         displayName: 'Output', // ou 'Main'
                         name: 'main',
-                        type: 'main',
                     },
                 ],
 		credentials: [
