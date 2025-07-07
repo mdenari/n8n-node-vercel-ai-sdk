@@ -1,19 +1,19 @@
 {
-  "name": "n8n-nodes-vercel-ai-sdk",
+  "name": "n8n-node-vercel-ai-sdk",
   "version": "0.1.6",
   "description": "n8n nodes for Vercel AI SDK integration",
   "keywords": [
     "n8n-community-node-package"
   ],
   "license": "MIT",
-  "homepage": "https://felixvemmer.com",
+  "homepage": "https://www.hyperize.com.br",
   "author": {
-    "name": "Felix Vemmer",
-    "email": "felix@vemmer.com"
+    "name": "Mauricio Denari",
+    "email": "mdenari@hotmail.com"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/felixvemmer/n8n-nodes-vercel-ai-sdk.git"
+    "url": "https://github.com/mdenari/n8n-node-vercel-ai-sdk.git"
   },
   "engines": {
     "node": ">=18.10",
