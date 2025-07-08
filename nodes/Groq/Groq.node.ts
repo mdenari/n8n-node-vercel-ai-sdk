@@ -198,8 +198,8 @@ export class Groq implements INodeType {
         defaults: {
             name: 'Groq',
         },
-                        inputs: ['main'],
-                        outputs: ['main'],      
+        inputs: [ { type: NodeConnectionType.Main } ],
+        outputs: [ { type: NodeConnectionType.Main } ],
            credentials: [
             {
                 name: 'groqApi',

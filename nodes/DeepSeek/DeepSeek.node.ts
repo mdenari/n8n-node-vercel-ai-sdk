@@ -177,8 +177,8 @@ export class DeepSeek implements INodeType {
         defaults: {
             name: 'DeepSeek',
          },
-        inputs: ['main'],
-        outputs: ['main'],
+        inputs: [ { type: NodeConnectionType.Main } ],
+        outputs: [ { type: NodeConnectionType.Main } ],
          credentials: [
             {
                 name: 'deepSeekApi',
