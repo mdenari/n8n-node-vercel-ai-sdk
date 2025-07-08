@@ -281,16 +281,8 @@ export class GoogleGenerativeAi implements INodeType {
 		defaults: {
 			name: 'Google Generative AI',
 		},
-                        inputs: [
-                            {
-                                type: NodeConnectionType.Main,
-                            },
-                        ],
-                        outputs: [
-                            {
-                                 type: NodeConnectionType.Main,
-                            },
-                        ],
+                        inputs: ['main'],
+                        outputs: ['main'],
 		credentials: [
 			{
 				name: 'googleGenerativeAIApi',
@@ -330,8 +322,7 @@ export class GoogleGenerativeAi implements INodeType {
 					loadOptionsMethod: 'getModels',
 				},
 				default: '',
-				description:
-					'Select which Google Generative AI model to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+				description: 'Select which Google Generative AI model to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Input Type',

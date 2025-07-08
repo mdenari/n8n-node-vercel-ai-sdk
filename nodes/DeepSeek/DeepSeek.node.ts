@@ -177,18 +177,8 @@ export class DeepSeek implements INodeType {
         defaults: {
             name: 'DeepSeek',
          },
-        inputs: [
-              {
-                  displayName: 'Main',
-                  type: NodeConnectionType.Main,
-              },
-         ],
-        outputs: [
-              {
-                  displayName: 'Main',
-                  type: NodeConnectionType.Main,
-              },
-        ],
+        inputs: ['main'],
+        outputs: ['main'],
          credentials: [
             {
                 name: 'deepSeekApi',
@@ -205,7 +195,7 @@ export class DeepSeek implements INodeType {
                     loadOptionsMethod: 'getModels',
                 },
                 default: '',
-                description: 'Select which DeepSeek model to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+                description: 'Select which DeepSeek model to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
             },
             {
                 displayName: 'Operation',
